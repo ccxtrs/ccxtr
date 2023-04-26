@@ -1,9 +1,13 @@
 [package]
 name = "ccxtr"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "CryptoCurrency eXchange Trading library in Rust"
+homepage = "https://github.com/ccxtrs/ccxtr/"
+documentation = "https://github.com/ccxtrs/ccxtr/"
+repository = "https://github.com/ccxtrs/ccxtr/"
+readme = "README.md"
 
 [dependencies]
 async-trait = "0.1.68"
