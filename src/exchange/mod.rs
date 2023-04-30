@@ -1,17 +1,20 @@
-use crate::error::Error;
-use crate::prelude::*;
-
 mod binance;
+mod property;
+
+use crate::error::Error;
+use crate::Result;
+use crate::model::Market;
+
 pub use binance::BinanceUsdm;
+pub use property::Properties;
 
 
 use async_trait::async_trait;
 
-
 #[async_trait]
 pub trait Exchange {
     // public
-    async fn load_markets(&self) -> Result<()> {
+    async fn load_markets(&self) -> Result<Vec<Market>> {
         Err(Error::NotImplemented)
     }
     async fn fetch_markets(&self) -> Result<()> {

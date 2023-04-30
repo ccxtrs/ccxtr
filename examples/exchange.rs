@@ -1,7 +1,10 @@
-use ccxtr::exchange::BinanceUsdm;
-use ccxtr::prelude::*;
+use ccxtr::BinanceUsdm;
+use ccxtr::Properties;
+use ccxtr::Exchange;
 #[tokio::main]
 async fn main() {
-    let ex = BinanceUsdm::new();
-    ex.load_markets().await.unwrap();
+    let props = Properties::builder().build();
+    let ex = BinanceUsdm::new(props);
+    let markets = ex.load_markets().await.unwrap();
+    println!("{:?}", markets);
 }

@@ -1,8 +1,12 @@
-pub mod exchange;
-
-pub mod prelude;
-
-pub mod error;
-mod macros;
+mod exchange;
 mod client;
+mod error;
 
+pub mod model;
+
+pub use error::Error;
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub use exchange::Exchange;
+pub use exchange::BinanceUsdm;
+pub use exchange::Properties;
