@@ -8,6 +8,10 @@ use crate::{
 
 use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
+use crate::model::Decimal;
+use crate::exchange::binance::util;
+use crate::model::{CurrencyLimit, MarketLimit, Precision, Range};
+use crate::util::into_precision;
 
 pub struct BinanceUsdm {
     client: crate::client::HttpClient,
@@ -37,6 +41,10 @@ impl BinanceUsdm {
 #[async_trait]
 impl Exchange for BinanceUsdm {
     async fn load_markets(&self) -> Result<Vec<Market>> {
+        self.fetch_markets().await
+    }
+
+    async fn fetch_markets(&self) -> Result<Vec<Market>> {
         let result: Result<LoadMarketsResponse> =
             self.client.get("/api/v1/exchangeInfo", NONE).await;
         result?.try_into()
@@ -60,7 +68,7 @@ pub(in super) struct LoadMarketsResponse {
 }
 
 impl TryInto<Vec<Market>> for LoadMarketsResponse {
-    type Error = crate::Error;
+    type Error = Error;
 
     fn try_into(self) -> std::result::Result<Vec<Market>, Self::Error> {
         self.symbols.into_iter()
@@ -72,19 +80,69 @@ impl TryInto<Vec<Market>> for LoadMarketsResponse {
 
 impl Into<std::result::Result<Market, Error>> for Symbol {
     fn into(self) -> std::result::Result<Market, Error> {
-        let base = self.base_asset.ok_or_else(|| crate::Error::MissingField("base_asset".to_string()))?;
-        let quote = self.quote_asset.ok_or_else(|| crate::Error::MissingField("quote_asset".to_string()))?;
+        let base_id = self.base_asset.ok_or_else(|| Error::MissingField("base_asset".to_string()))?;
+        let quote_id = self.quote_asset.ok_or_else(|| Error::MissingField("quote_asset".to_string()))?;
+        let settle_id = self.margin_asset;
+
+        let base = util::to_unified_symbol(&base_id);
+        let quote = util::to_unified_symbol(&quote_id);
+        let settle = settle_id.as_ref().and_then(|s| Some(util::to_unified_symbol(s)));
+
+        let symbol = format!("{base}/{quote}:{}", settle.as_ref().unwrap_or(&"".to_string()));
+        let active = util::is_active(self.status);
+
+        let currency_limit: Option<CurrencyLimit> = None;
+        let market_limit: Option<MarketLimit> = None;
+
+        let mut limit = MarketLimit{
+            amount: None,
+            price: None,
+            cost: None,
+            leverage: None,
+        };
+
+        let mut precision = Precision {
+            amount: self.quantity_precision,
+            price: self.price_precision,
+            cost: None,
+        };
+
+        for filter in self.filters.iter().flatten() {
+            match filter.filter_type.as_str() {
+                "PRICE_FILTER" => {
+                    let start = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".to_string()))?.parse::<Decimal>()?;
+                    let end = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".to_string()))?.parse::<Decimal>()?;
+                    limit.price = Some(Range { start, end });
+                    let tick_size = filter.tick_size.as_ref().ok_or_else(|| Error::MissingField("tick_size".to_string()))?;
+                    precision.price = Some(into_precision(tick_size.clone())?);
+                },
+                "LOT_SIZE" => {
+                    let start = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".to_string()))?.parse::<Decimal>()?;
+                    let end = filter.max_qty.as_ref().ok_or_else(|| Error::MissingField("max_qty".to_string()))?.parse::<Decimal>()?;
+                    limit.amount = Some(Range { start, end });
+                },
+                "MIN_NOTIONAL" => {
+                    let start = filter.notional.as_ref().ok_or_else(|| Error::MissingField("notional".to_string()))?.parse::<Decimal>()?;
+                    limit.cost = Some(Range { start, end: Decimal::MAX });
+                },
+                // "MARKET_LOT_SIZE" => {},
+                // "MAX_NUM_ORDERS" => {},
+                // "MAX_NUM_ALGO_ORDERS" => {},
+                // "PERCENT_PRICE" => {},
+                _ => {},
+            }
+        }
         Ok(Market {
-            id: "".to_string(),
-            symbol: "".to_string(),
+            id: self.symbol.ok_or_else(|| Error::MissingField("base_asset".to_string()))?,
+            symbol,
             base,
             quote,
-            base_id: "".to_string(),
-            quote_id: "".to_string(),
-            active: false,
-            market_type: MarketType::Spot,
-            settle: None,
-            settle_id: None,
+            base_id,
+            quote_id,
+            active,
+            market_type: MarketType::Futures,
+            settle,
+            settle_id,
             contract_size: None,
             contract_type: None,
             expiry: None,
@@ -132,10 +190,10 @@ pub(in super) struct Symbol {
     pub base_asset: Option<String>,
     pub quote_asset: Option<String>,
     pub margin_asset: Option<String>,
-    pub price_precision: Option<i64>,
-    pub quantity_precision: Option<i64>,
-    pub base_asset_precision: Option<i64>,
-    pub quote_precision: Option<i64>,
+    pub price_precision: Option<isize>,
+    pub quantity_precision: Option<isize>,
+    pub base_asset_precision: Option<isize>,
+    pub quote_precision: Option<isize>,
     pub underlying_type: Option<String>,
     pub underlying_sub_type: Option<Vec<String>>,
     pub settle_plan: Option<i64>,

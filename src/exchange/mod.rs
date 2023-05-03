@@ -17,7 +17,7 @@ pub trait Exchange {
     async fn load_markets(&self) -> Result<Vec<Market>> {
         Err(Error::NotImplemented)
     }
-    async fn fetch_markets(&self) -> Result<()> {
+    async fn fetch_markets(&self) -> Result<Vec<Market>> {
         Err(Error::NotImplemented)
     }
     async fn fetch_currencies(&self) -> Result<()> {

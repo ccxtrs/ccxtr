@@ -1,6 +1,7 @@
 use std::ops;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+
+pub type Decimal = rust_decimal::Decimal;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OptionType {
@@ -19,7 +20,7 @@ pub enum MarketType {
     Spot,
     Margin,
     Swap,
-    Future,
+    Futures,
     Option,
 }
 
@@ -116,13 +117,13 @@ pub struct Market {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Precision {
     /// number of decimal digits after the decimal point
-    pub price: usize,
+    pub price: Option<isize>,
 
     /// number of decimal digits after the decimal point
-    pub amount: usize,
+    pub amount: Option<isize>,
 
     /// number of decimal digits after the decimal point
-    pub cost: usize,
+    pub cost: Option<isize>,
 }
 
 
@@ -130,6 +131,8 @@ pub struct Precision {
 pub struct MarketLimit {
     pub amount: Option<Range>,
     pub price: Option<Range>,
+
+    /// cost = price * amount
     pub cost: Option<Range>,
     pub leverage: Option<Range>,
 }
@@ -173,7 +176,7 @@ pub struct Currency {
     pub network: Network,
 }
 
-pub type Range = ops::Range<isize>;
+pub type Range = ops::Range<Decimal>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrencyLimit {

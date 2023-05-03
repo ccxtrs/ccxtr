@@ -19,13 +19,6 @@ impl HttpClient {
             builder = builder.query(query);
         }
         Ok(builder.send().await?.json::<T>().await?)
-        // let response = builder.send().await?;
-        // let string = response.text().await?;
-        // // extract head of string
-        // let x = string.char_indices().take(100).map(|(i, c)| c).collect::<String>();
-        // println!("[http_client:get] {}", x);
-        // // Ok(response.json::<T>().await?)
-        // Err(Error::NotImplemented)
     }
 }
 
