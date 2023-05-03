@@ -6,7 +6,8 @@ use crate::Result;
 use crate::model::Market;
 
 pub use binance::BinanceUsdm;
-pub use property::Properties;
+pub(in self) use property::Properties;
+pub use property::PropertiesBuilder;
 
 
 use async_trait::async_trait;

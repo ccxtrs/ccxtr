@@ -10,5 +10,5 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub use exchange::Exchange;
 pub use exchange::BinanceUsdm;
-pub use exchange::Properties;
+pub use exchange::PropertiesBuilder;
 
