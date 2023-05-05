@@ -115,9 +115,6 @@ impl Into<std::result::Result<Market, Error>> for Symbol {
 
         let active = util::is_active(self.status);
 
-        let currency_limit: Option<CurrencyLimit> = None;
-        let market_limit: Option<MarketLimit> = None;
-
         let mut limit = MarketLimit {
             amount: None,
             price: None,
@@ -177,8 +174,8 @@ impl Into<std::result::Result<Market, Error>> for Symbol {
             fee_currency: None,
             fee_currency_id: None,
             fee_side: None,
-            precision: None,
-            limit: None,
+            precision: Some(precision),
+            limit: Some(limit),
         })
     }
 }
