@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 
-use crate::Result;
+use crate::{Error, Result};
 
 pub const NONE: Option<&'static ()> = None;
 
@@ -18,7 +18,12 @@ impl HttpClient {
         if let Some(query) = query {
             builder = builder.query(query);
         }
-        Ok(builder.send().await?.json::<T>().await?)
+        let response = builder.send().await?;
+        let code = response.status();
+        if code.as_u16() < 200 || code.as_u16() >= 300 {
+            return Err(Error::HttpError(response.text().await?));
+        }
+        Ok(response.json::<T>().await?)
     }
 }
 

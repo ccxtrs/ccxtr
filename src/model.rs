@@ -22,6 +22,7 @@ pub enum MarketType {
     Swap,
     Futures,
     Option,
+    Unknown,
 }
 
 
@@ -82,7 +83,7 @@ pub struct Market {
     pub contract_type: Option<ContractType>,
 
     /// the unix expiry timestamp in milliseconds, None for everything except future market type.
-    pub expiry: Option<u64>,
+    pub expiry: Option<i64>,
 
     /// The datetime contract will in iso8601 format
     pub expiry_datetime: String,

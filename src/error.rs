@@ -7,15 +7,18 @@ pub enum Error {
     NotImplemented,
     #[error("deserialization error for json body {0}")]
     DeserializeJsonBody(String),
-    #[error("http error {source}")]
-    HttpError {
-        #[from]
-        source: reqwest::Error
-    },
+    #[error("http error {0}")]
+    HttpError(String),
     #[error("missing field! {0}")]
     MissingField(String),
     #[error("parse error {0}")]
     ParseError(String),
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        Error::HttpError(format!("{}", e))
+    }
 }
 
 impl From<rust_decimal::Error> for Error {
