@@ -1,5 +1,6 @@
 use std::num::ParseFloatError;
 use thiserror::Error;
+use tokio_tungstenite::tungstenite;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -9,6 +10,8 @@ pub enum Error {
     DeserializeJsonBody(String),
     #[error("http error {0}")]
     HttpError(String),
+    #[error("websocket error {0}")]
+    WebsocketError(String),
     #[error("missing field! {0}")]
     MissingField(String),
     #[error("parse error {0}")]
@@ -30,5 +33,11 @@ impl From<rust_decimal::Error> for Error {
 impl From<ParseFloatError> for Error {
     fn from(e: ParseFloatError) -> Self {
         Error::ParseError(format!("{}", e))
+    }
+}
+
+impl From<tungstenite::Error> for Error {
+    fn from(value: tungstenite::Error) -> Self {
+        Error::WebsocketError(format!("{}", value))
     }
 }

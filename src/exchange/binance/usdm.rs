@@ -10,13 +10,14 @@ use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
-use crate::model::{ContractType, Decimal};
+use crate::model::{ContractType, Decimal, OrderBook};
 use crate::exchange::binance::util;
 use crate::model::{CurrencyLimit, MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
 pub struct BinanceUsdm {
-    client: crate::client::HttpClient,
+    http_client: crate::client::HttpClient,
+    ws_client: crate::client::WsClient,
     #[allow(dead_code)]
     api_key: Option<String>,
     #[allow(dead_code)]
@@ -25,18 +26,19 @@ pub struct BinanceUsdm {
 
 
 impl BinanceUsdm {
-    pub fn new(props: Properties) -> Self {
+    pub async fn new(props: Properties) -> Result<Self> {
         let host = props.host.unwrap_or_else(|| "https://fapi.binance.com".into());
         let port = props.port.unwrap_or(443);
 
-        let client = crate::client::Builder::new(host, port)
-            .build();
+        let http_client = crate::client::Builder::new().host(host).port(port).build()?;
+        let ws_client = crate::client::WsClient::new("wss://fstream.binance.com/ws").await?;
 
-        Self {
+        Ok(Self {
             api_key: props.api_key,
             secret_key: props.secret_key,
-            client,
-        }
+            http_client,
+            ws_client: ws_client
+        })
     }
 }
 
@@ -48,8 +50,12 @@ impl Exchange for BinanceUsdm {
 
     async fn fetch_markets(&self) -> Result<Vec<Market>> {
         let result: Result<LoadMarketsResponse> =
-            self.client.get("/fapi/v1/exchangeInfo", NONE).await;
+            self.http_client.get("/fapi/v1/exchangeInfo", NONE).await;
         result?.try_into()
+    }
+
+    async fn watch_order_book(&self) -> tokio_stream<OrderBook> {
+
     }
 }
 

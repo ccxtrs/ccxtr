@@ -5,7 +5,7 @@ use ccxtr::model::Market;
 #[tokio::main]
 async fn main() {
     let props = PropertiesBuilder::new().build();
-    let ex = BinanceUsdm::new(props);
+    let ex = BinanceUsdm::new(props).await;
     let markets = ex.fetch_markets().await.unwrap();
     for m in markets {
         match m {

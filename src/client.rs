@@ -1,10 +1,26 @@
 use std::fmt::Debug;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use crate::{Error, Result};
 
 pub const NONE: Option<&'static ()> = None;
+
+pub struct WsClient {
+    client: WebSocketStream<MaybeTlsStream<TcpStream>>,
+}
+
+impl WsClient {
+    pub async fn new<H: Into<String>>(endpoint: H) -> Result<Self> {
+        let (ws_stream, _) = tokio_tungstenite::connect_async(endpoint.into()).await?;
+        Ok(Self {
+            client: ws_stream,
+        })
+    }
+}
 
 pub struct HttpClient {
     host: String,
@@ -34,18 +50,29 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(host: String, port: u16) -> Self {
+    pub fn new() -> Self {
         Self {
-            host,
-            port,
+            host: "".to_string(),
+            port: 0,
         }
     }
 
-    pub fn build(self) -> HttpClient {
-        HttpClient {
-            client: reqwest::Client::new(),
+    pub fn host(mut self, host: String) -> Self {
+        self.host = host;
+        self
+    }
+
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+
+    pub fn build(self) -> Result<HttpClient> {
+        let result = reqwest::Client::builder().build();
+        Ok(HttpClient {
+            client: result?,
             host: self.host,
             port: self.port,
-        }
+        })
     }
 }

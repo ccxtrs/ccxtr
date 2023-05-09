@@ -3,7 +3,7 @@ mod property;
 
 use crate::error::Error;
 use crate::Result;
-use crate::model::Market;
+use crate::model::{Market, OrderBook};
 
 pub use binance::BinanceUsdm;
 pub(in self) use property::Properties;
@@ -49,7 +49,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> Result<()> {
         Err(Error::NotImplemented)
     }
-    async fn watch_order_book(&self) -> Result<()> {
+    async fn watch_order_book(&self) -> Result<OrderBook> {
         Err(Error::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> Result<()> {

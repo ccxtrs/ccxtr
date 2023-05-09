@@ -221,3 +221,22 @@ pub struct Network {
     /// The minimums and maximums for amounts (volumes), withdrawals and deposits.
     pub limits: CurrencyLimit,
 }
+
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderBook {
+    pub bids: Vec<OrderBookUnit>,
+    pub asks: Vec<OrderBookUnit>,
+    pub symbol: String,
+    pub timestamp: i64,
+    pub datetime: String,
+    pub nonce: Option<i64>
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderBookUnit {
+    pub price: Decimal,
+    pub amount: Decimal,
+}
