@@ -1,5 +1,8 @@
+use std::hash::{Hash, Hasher};
 use std::ops;
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
+use crate::Error;
 
 pub type Decimal = rust_decimal::Decimal;
 
@@ -9,13 +12,13 @@ pub enum OptionType {
     Put,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Hash, Debug, Clone, Serialize, Deserialize)]
 pub enum ContractType {
     Linear,
     Inverse,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Hash, PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum MarketType {
     Spot,
     Margin,
@@ -112,8 +115,28 @@ pub struct Market {
 
     /// market limits for amount, price, cost and leverage
     pub limit: Option<MarketLimit>,
-
 }
+
+impl Hash for Market {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.base.hash(state);
+        self.quote.hash(state);
+        self.market_type.hash(state);
+        self.expiry.hash(state);
+    }
+}
+
+impl PartialEq<Self> for Market {
+    fn eq(&self, other: &Self) -> bool {
+        self.base == other.base
+            && self.quote == other.quote
+            && self.market_type == other.market_type
+            && self.expiry == other.expiry
+    }
+}
+
+impl Eq for Market {}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Precision {
@@ -232,6 +255,25 @@ pub struct OrderBook {
     pub timestamp: i64,
     pub datetime: String,
     pub nonce: Option<i64>
+}
+
+impl OrderBook {
+    pub fn new() -> Self {
+        Self{
+            bids: Vec::new(),
+            asks: Vec::new(),
+            symbol: String::new(),
+            timestamp: 0,
+            datetime: String::new(),
+            nonce: None
+        }
+    }
+}
+
+impl From<String> for OrderBook {
+    fn from(value: String) -> Self {
+        serde_json::from_str(&value).unwrap()
+    }
 }
 
 

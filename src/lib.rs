@@ -1,5 +1,5 @@
 mod exchange;
-mod client;
+pub mod client;
 mod error;
 mod util;
 

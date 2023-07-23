@@ -5,6 +5,7 @@ pub struct Properties {
     pub(crate) port: Option<u16>,
     pub(crate) api_key: Option<String>,
     pub(crate) secret_key: Option<String>,
+    pub(crate) ws_endpoint: Option<String>,
 }
 
 #[derive(Default)]
@@ -13,6 +14,7 @@ pub struct PropertiesBuilder {
     port: Option<u16>,
     api_key: Option<String>,
     secret_key: Option<String>,
+    ws_endpoint: Option<String>,
 }
 
 impl PropertiesBuilder {
@@ -40,12 +42,18 @@ impl PropertiesBuilder {
         self
     }
 
+    pub fn ws_endpoint<S: Into<String>>(mut self, ws_endpoint: S) -> Self {
+        self.ws_endpoint = Some(ws_endpoint.into());
+        self
+    }
+
     pub fn build(self) -> Properties {
         Properties {
             host: self.host,
             port: self.port,
             api_key: self.api_key,
             secret_key: self.secret_key,
+            ws_endpoint: self.ws_endpoint,
         }
     }
 }

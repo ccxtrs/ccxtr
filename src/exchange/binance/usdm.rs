@@ -1,64 +1,93 @@
-use crate::{
-    exchange::{Exchange, Properties},
-    Result,
-    client::NONE,
-    model::{Market, MarketType},
-    Error,
-};
-
-use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
-use crate::model::{ContractType, Decimal, OrderBook};
+use futures::{SinkExt, Stream, StreamExt};
+use serde::{Deserialize, Serialize};
+
+use crate::{client::NONE, Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
 use crate::exchange::binance::util;
-use crate::model::{CurrencyLimit, MarketLimit, Precision, Range};
+use crate::exchange::ExchangeBase;
+use crate::model::{ContractType, Decimal, OrderBook};
+use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
 pub struct BinanceUsdm {
-    http_client: crate::client::HttpClient,
-    ws_client: crate::client::WsClient,
-    #[allow(dead_code)]
-    api_key: Option<String>,
-    #[allow(dead_code)]
-    secret_key: Option<String>,
+    exchange_base: ExchangeBase,
 }
 
 
 impl BinanceUsdm {
-    pub async fn new(props: Properties) -> Result<Self> {
-        let host = props.host.unwrap_or_else(|| "https://fapi.binance.com".into());
-        let port = props.port.unwrap_or(443);
+    pub fn new(props: Properties) -> Result<Self> {
+        let mut common_props = PropertiesBuilder::new()
+            .host(props.host.unwrap_or_else(|| "https://fapi.binance.com".into()))
+            .port(props.port.unwrap_or(443))
+            .ws_endpoint("wss://fstream.binance.com/ws")
+            .api_key(props.api_key.unwrap_or_default())
+            .secret_key(props.secret_key.unwrap_or_default());
 
-        let http_client = crate::client::Builder::new().host(host).port(port).build()?;
-        let ws_client = crate::client::WsClient::new("wss://fstream.binance.com/ws").await?;
 
         Ok(Self {
-            api_key: props.api_key,
-            secret_key: props.secret_key,
-            http_client,
-            ws_client: ws_client
+            exchange_base: ExchangeBase::new(common_props.build())?,
         })
+    }
+
+    pub async fn connect(&mut self) {
+        self.exchange_base.connect().await;
     }
 }
 
 #[async_trait]
 impl Exchange for BinanceUsdm {
-    async fn load_markets(&self) -> Result<Vec<Market>> {
-        self.fetch_markets().await
+    async fn load_markets(&mut self) -> Result<&Vec<Market>> {
+        if self.exchange_base.markets.is_empty() {
+            self.fetch_markets().await?;
+        }
+        Ok(&self.exchange_base.markets)
     }
 
-    async fn fetch_markets(&self) -> Result<Vec<Market>> {
-        let result: Result<LoadMarketsResponse> =
-            self.http_client.get("/fapi/v1/exchangeInfo", NONE).await;
-        result?.try_into()
+    async fn fetch_markets(&mut self) -> Result<&Vec<Market>> {
+        let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", NONE).await?;
+        let result: Result<Vec<Market>> = result.try_into();
+        match result {
+            Ok(markets) => {
+                for m in &markets {
+                    self.exchange_base.unifier.insert_market_symbol_id(&m, &m.id).await;
+                }
+                self.exchange_base.markets = markets;
+                Ok(&self.exchange_base.markets)
+            }
+            Err(e) => Err(e),
+        }
+
     }
 
-    async fn watch_order_book(&self) -> tokio_stream<OrderBook> {
+    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Box<dyn Stream<Item=OrderBook> + Unpin + '_>> {
+        let mut sender = self.exchange_base.ws_client.sender().unwrap();
+        for m in markets {
+            let symbol_id = self.exchange_base.unifier.get_symbol_id(&m).await;
+            match symbol_id {
+                Some(symbol_id) => {
+                    let symbol_id = symbol_id.to_lowercase();
+                    let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [\"{symbol_id}@depth5@100ms\"], \"id\": 1}}");
+                    // let stream_name = format!("{symbol_id}@depth5@100ms");
+                    sender.send(stream_name).await.unwrap();
+                }
+                None => {
+                    return Err(Error::SymbolNotFound(m.symbol));
+                }
+            }
+        }
+        Ok(Box::new(self.exchange_base.ws_client.receiver().map(|s| {
+            let vec = s.unwrap();
+            println!("Received: {}", String::from_utf8(vec).unwrap());
+            let mut order_book = OrderBook::new();
+            order_book
+        })))
 
+
+        // Ok(Box::new(futures::stream::empty()))
     }
 }
-
 
 #[derive(Serialize)]
 struct LoadMarketsRequest {}
@@ -66,7 +95,7 @@ struct LoadMarketsRequest {}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(in super) struct LoadMarketsResponse {
+pub(in super) struct FetchMarketsResponse {
     pub exchange_filters: Option<Vec<String>>,
     pub rate_limits: Vec<RateLimit>,
     pub server_time: i64,
@@ -75,7 +104,7 @@ pub(in super) struct LoadMarketsResponse {
     pub timezone: String,
 }
 
-impl TryInto<Vec<Market>> for LoadMarketsResponse {
+impl TryInto<Vec<Market>> for FetchMarketsResponse {
     type Error = Error;
 
     fn try_into(self) -> std::result::Result<Vec<Market>, Self::Error> {
@@ -86,8 +115,8 @@ impl TryInto<Vec<Market>> for LoadMarketsResponse {
 }
 
 
-impl Into<std::result::Result<Market, Error>> for Symbol {
-    fn into(self) -> std::result::Result<Market, Error> {
+impl Into<Result<Market>> for Symbol {
+    fn into(self) -> Result<Market> {
         let base_id = self.base_asset.ok_or_else(|| Error::MissingField("base_asset".into()))?;
         let quote_id = self.quote_asset.ok_or_else(|| Error::MissingField("quote_asset".into()))?;
         let settle_id = self.margin_asset;
