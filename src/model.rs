@@ -1,8 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::ops;
-use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
-use crate::Error;
 
 pub type Decimal = rust_decimal::Decimal;
 

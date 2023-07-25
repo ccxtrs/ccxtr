@@ -1,25 +1,21 @@
-mod binance;
-mod property;
-
 use std::collections::HashMap;
-use crate::error::Error;
-use crate::Result;
-use crate::model::{Market, OrderBook};
-use std::sync::Arc;
+
+use async_trait::async_trait;
+use futures::channel::mpsc;
+use futures::StreamExt;
+use tokio::sync::RwLock;
 
 pub use binance::BinanceUsdm;
 pub(in self) use property::Properties;
 pub use property::PropertiesBuilder;
 
-
-use async_trait::async_trait;
-use futures::channel::mpsc;
-use futures::channel::mpsc::Receiver;
-use futures::Stream;
-use tokio::sync::{Mutex, RwLock};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
+use crate::error::Error;
+use crate::model::{Market, OrderBook};
+use crate::Result;
 
-use futures::StreamExt;
+mod binance;
+mod property;
 
 pub struct Unifier {
     unified_market_to_symbol_id: RwLock<HashMap<Market, String>>,
@@ -51,17 +47,17 @@ pub enum StreamItem {
 }
 
 pub struct ExchangeBase {
-    pub http_client: HttpClient,
-    pub ws_client: WsClient,
+    pub(super) http_client: HttpClient,
+    pub(super) ws_client: WsClient,
 
-    pub stream_parser: fn(Vec<u8>) -> StreamItem,
+    stream_parser: fn(Vec<u8>) -> StreamItem,
 
     order_book_stream_sender: mpsc::Sender<OrderBook>,
-    pub order_book_stream: Arc<Mutex<mpsc::Receiver<OrderBook>>>,
+    order_book_stream: Option<mpsc::Receiver<OrderBook>>,
 
-    pub markets: Vec<Market>,
+    pub(super) markets: Vec<Market>,
 
-    pub unifier: Unifier,
+    pub(super) unifier: Unifier,
 }
 
 const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
@@ -83,9 +79,9 @@ impl ExchangeBase {
             .host(properties.host.unwrap())
             .port(properties.port.unwrap())
             .build().unwrap();
-        let mut ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
+        let ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
         let (order_book_stream_sender, order_book_stream) = mpsc::channel::<OrderBook>(MAX_BUFFER);
-        let order_book_stream = Arc::new(Mutex::new(order_book_stream));
+        let order_book_stream = Some(order_book_stream);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
@@ -101,12 +97,11 @@ impl ExchangeBase {
         self.ws_client.connect().await?;
         let stream_parser = self.stream_parser;
         let mut order_book_stream_sender = self.order_book_stream_sender.clone();
-        let receiver = self.ws_client.receiver();
+        let mut receiver = self.ws_client.receiver();
 
         tokio::spawn(async move {
-            let mut guard = receiver.lock().await;
             loop {
-                let message = guard.next().await;
+                let message = receiver.as_mut().unwrap().next().await;
                 match message {
                     Some(message) => {
                         match stream_parser(message.unwrap()) {
@@ -126,6 +121,12 @@ impl ExchangeBase {
         });
 
         Ok(())
+    }
+}
+
+impl From<mpsc::SendError> for Error {
+    fn from(e: mpsc::SendError) -> Self {
+        Error::WebsocketError(format!("{}", e))
     }
 }
 
@@ -166,7 +167,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> Result<()> {
         Err(Error::NotImplemented)
     }
-    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Arc<Mutex<Receiver<OrderBook>>>> {
+    async fn watch_order_book(&mut self, _: Vec<Market>) -> Result<mpsc::Receiver<OrderBook>> {
         Err(Error::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> Result<()> {

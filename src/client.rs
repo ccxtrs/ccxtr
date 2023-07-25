@@ -1,15 +1,12 @@
 use std::fmt::Debug;
 use std::io;
-use std::sync::Arc;
 
-use futures::{SinkExt, Stream, StreamExt};
+use futures::{SinkExt, StreamExt};
 use futures::channel::mpsc::Sender;
 use futures::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, tungstenite, WebSocketStream};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -26,7 +23,7 @@ pub struct WsClient {
     endpoint: String,
 
     sender: Option<Sender<String>>,
-    receiver: Option<Arc<Mutex<MappedReceiveStream>>>,
+    receiver: Option<MappedReceiveStream>,
 }
 
 impl From<io::Error> for Error {
@@ -49,13 +46,6 @@ impl WsClient {
         }
     }
 
-    fn convert_message(message: core::result::Result<Message, tungstenite::error::Error>) -> Result<Vec<u8>> {
-        match message {
-            Ok(x) => Ok(x.into_data()),
-            Err(e) => Err(Error::WebsocketError(format!("{}", e)))
-        }
-    }
-
     pub async fn connect(&mut self) -> Result<&Self> {
         let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
         let (mut tx, rx) = stream.split();
@@ -75,22 +65,16 @@ impl WsClient {
         });
 
         self.sender = Some(sender);
-        self.receiver = Some(Arc::new(Mutex::new(rx)));
+        self.receiver = Some(rx);
         Ok(self)
     }
 
-    pub fn sender(&self) -> Result<Sender<String>> {
-        match &self.sender {
-            Some(sender) => Ok(sender.clone()),
-            None => Err(Error::WebsocketError("No sender".to_string()))
-        }
+    pub fn sender(&self) -> Option<Sender<String>> {
+        self.sender.clone()
     }
 
-    pub fn receiver(&mut self) -> Arc<Mutex<MappedReceiveStream>> {
-        match self.receiver {
-            Some(ref receiver) => receiver.clone(),
-            None => panic!("No receiver")
-        }
+    pub fn receiver(&mut self) -> Option<MappedReceiveStream> {
+        self.receiver.take()
     }
 }
 
@@ -172,9 +156,10 @@ mod test {
         sender.send("test".to_string()).await.unwrap();
         sender.send("test2".to_string()).await.unwrap();
 
-        let msg = client.receiver().lock().await.next().await.unwrap();
+        let mut receiver = client.receiver();
+        let msg = receiver.as_mut().unwrap().next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
-        let msg = client.receiver().lock().await.next().await.unwrap();
+        let msg = receiver.as_mut().unwrap().next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
     }
 }

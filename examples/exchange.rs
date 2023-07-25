@@ -7,7 +7,7 @@ use futures::StreamExt;
 async fn main() {
     let props = PropertiesBuilder::new().build();
     let mut ex = BinanceUsdm::new(props).unwrap();
-    ex.connect().await;
+    ex.connect().await.unwrap();
     let markets = ex.load_markets().await.unwrap();
     let mut target_markets: Vec<Market> = vec!();
     for m in markets {
@@ -19,8 +19,7 @@ async fn main() {
         }
     }
     let mut stream = ex.watch_order_book(target_markets).await.unwrap();
-    let mut stream = stream.lock().await;
     while let Some(x) = stream.next().await {
-        print!("{:?}", x);
+        println!("{:?}", x);
     }
 }

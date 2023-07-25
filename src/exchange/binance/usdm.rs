@@ -1,15 +1,13 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
-use futures::{SinkExt, Stream, StreamExt};
+use futures::SinkExt;
 use futures::channel::mpsc::Receiver;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use crate::{client::NONE, Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
-use crate::exchange::binance::util;
 use crate::exchange::{ExchangeBase, StreamItem};
+use crate::exchange::binance::util;
 use crate::model::{ContractType, Decimal, OrderBook};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
@@ -21,7 +19,7 @@ pub struct BinanceUsdm {
 
 impl BinanceUsdm {
     pub fn new(props: Properties) -> Result<Self> {
-        let mut common_props = PropertiesBuilder::new()
+        let common_props = PropertiesBuilder::new()
             .host(props.host.unwrap_or_else(|| "https://fapi.binance.com".into()))
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://fstream.binance.com/ws")
@@ -37,8 +35,8 @@ impl BinanceUsdm {
         })
     }
 
-    pub async fn connect(&mut self) {
-        self.exchange_base.connect().await;
+    pub async fn connect(&mut self) -> Result<()> {
+        self.exchange_base.connect().await
     }
 }
 
@@ -66,23 +64,27 @@ impl Exchange for BinanceUsdm {
         }
     }
 
-    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Arc<Mutex<Receiver<OrderBook>>>> {
-        let mut sender = self.exchange_base.ws_client.sender().unwrap();
-        for m in markets {
-            let symbol_id = self.exchange_base.unifier.get_symbol_id(&m).await;
-            match symbol_id {
-                Some(symbol_id) => {
-                    let symbol_id = symbol_id.to_lowercase();
-                    let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [\"{symbol_id}@depth5@100ms\"], \"id\": 1}}");
-                    // let stream_name = format!("{symbol_id}@depth5@100ms");
-                    sender.send(stream_name).await.unwrap();
-                }
-                None => {
-                    return Err(Error::SymbolNotFound(m.symbol));
-                }
+    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Receiver<OrderBook>> {
+        let mut sender = self.exchange_base.ws_client.sender()
+            .ok_or(Error::WebsocketError("no sender".into()))?;
+
+        let mut symbol_ids: Vec<String> = Vec::new();
+        for m in &markets {
+            match self.exchange_base.unifier.get_symbol_id(&m).await {
+                Some(symbol_id) => symbol_ids.push(symbol_id),
+                None => return Err(Error::SymbolNotFound(m.symbol.clone())),
             }
         }
-        Ok(self.exchange_base.order_book_stream.clone())
+        let params = symbol_ids.iter()
+            .map(|s| format!("\"{}@depth5@100ms\"", s.to_lowercase()))
+            .collect::<Vec<String>>()
+            .join(",");
+
+        let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
+        sender.send(stream_name).await?;
+
+        self.exchange_base.order_book_stream.take()
+            .ok_or(Error::WebsocketError("no receiver".into()))
     }
 }
 
