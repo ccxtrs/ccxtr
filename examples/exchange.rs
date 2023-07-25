@@ -18,9 +18,9 @@ async fn main() {
             _ => (),
         }
     }
-
     let mut stream = ex.watch_order_book(target_markets).await.unwrap();
+    let mut stream = stream.lock().await;
     while let Some(x) = stream.next().await {
-        print!("");
+        print!("{:?}", x);
     }
 }

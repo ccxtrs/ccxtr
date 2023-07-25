@@ -1,12 +1,15 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
 use futures::{SinkExt, Stream, StreamExt};
+use futures::channel::mpsc::Receiver;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::{client::NONE, Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
 use crate::exchange::binance::util;
-use crate::exchange::ExchangeBase;
+use crate::exchange::{ExchangeBase, StreamItem};
 use crate::model::{ContractType, Decimal, OrderBook};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
@@ -23,7 +26,10 @@ impl BinanceUsdm {
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://fstream.binance.com/ws")
             .api_key(props.api_key.unwrap_or_default())
-            .secret_key(props.secret_key.unwrap_or_default());
+            .secret_key(props.secret_key.unwrap_or_default())
+            .stream_parser(|message| {
+                StreamItem::OrderBook(OrderBook::new())
+            });
 
 
         Ok(Self {
@@ -58,10 +64,9 @@ impl Exchange for BinanceUsdm {
             }
             Err(e) => Err(e),
         }
-
     }
 
-    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Box<dyn Stream<Item=OrderBook> + Unpin + '_>> {
+    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Arc<Mutex<Receiver<OrderBook>>>> {
         let mut sender = self.exchange_base.ws_client.sender().unwrap();
         for m in markets {
             let symbol_id = self.exchange_base.unifier.get_symbol_id(&m).await;
@@ -77,15 +82,7 @@ impl Exchange for BinanceUsdm {
                 }
             }
         }
-        Ok(Box::new(self.exchange_base.ws_client.receiver().map(|s| {
-            let vec = s.unwrap();
-            println!("Received: {}", String::from_utf8(vec).unwrap());
-            let mut order_book = OrderBook::new();
-            order_book
-        })))
-
-
-        // Ok(Box::new(futures::stream::empty()))
+        Ok(self.exchange_base.order_book_stream.clone())
     }
 }
 

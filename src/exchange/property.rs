@@ -1,3 +1,4 @@
+use crate::exchange::StreamItem;
 
 #[derive(Debug)]
 pub struct Properties {
@@ -6,6 +7,7 @@ pub struct Properties {
     pub(crate) api_key: Option<String>,
     pub(crate) secret_key: Option<String>,
     pub(crate) ws_endpoint: Option<String>,
+    pub(crate) stream_parser: Option<fn(Vec<u8>) -> StreamItem>,
 }
 
 #[derive(Default)]
@@ -15,6 +17,7 @@ pub struct PropertiesBuilder {
     api_key: Option<String>,
     secret_key: Option<String>,
     ws_endpoint: Option<String>,
+    stream_parser: Option<fn(Vec<u8>) -> StreamItem>,
 }
 
 impl PropertiesBuilder {
@@ -47,6 +50,11 @@ impl PropertiesBuilder {
         self
     }
 
+    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>) -> StreamItem) -> Self {
+        self.stream_parser = Some(stream_parser);
+        self
+    }
+
     pub fn build(self) -> Properties {
         Properties {
             host: self.host,
@@ -54,6 +62,7 @@ impl PropertiesBuilder {
             api_key: self.api_key,
             secret_key: self.secret_key,
             ws_endpoint: self.ws_endpoint,
+            stream_parser: self.stream_parser,
         }
     }
 }

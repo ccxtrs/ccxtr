@@ -1,14 +1,16 @@
 use std::fmt::Debug;
 use std::io;
+use std::sync::Arc;
 
 use futures::{SinkExt, Stream, StreamExt};
 use futures::channel::mpsc::Sender;
-use futures::stream::SplitStream;
+use futures::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio::sync::Mutex;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, tungstenite, WebSocketStream};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::{Error, Result};
@@ -16,11 +18,15 @@ use crate::{Error, Result};
 pub const NONE: Option<&'static ()> = None;
 
 
+type ReceiveStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+type MapFunc = fn(core::result::Result<Message, tungstenite::error::Error>) -> core::result::Result<Vec<u8>, Error>;
+type MappedReceiveStream = Map<ReceiveStream, MapFunc>;
+
 pub struct WsClient {
     endpoint: String,
 
     sender: Option<Sender<String>>,
-    receiver: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
+    receiver: Option<Arc<Mutex<MappedReceiveStream>>>,
 }
 
 impl From<io::Error> for Error {
@@ -28,6 +34,11 @@ impl From<io::Error> for Error {
         Error::WebsocketError(format!("{}", e))
     }
 }
+
+
+const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
+const MAX_CAPACITY: usize = !(OPEN_MASK);
+const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
 
 impl WsClient {
     pub fn new(endpoint: &str) -> Self {
@@ -38,20 +49,33 @@ impl WsClient {
         }
     }
 
+    fn convert_message(message: core::result::Result<Message, tungstenite::error::Error>) -> Result<Vec<u8>> {
+        match message {
+            Ok(x) => Ok(x.into_data()),
+            Err(e) => Err(Error::WebsocketError(format!("{}", e)))
+        }
+    }
+
     pub async fn connect(&mut self) -> Result<&Self> {
         let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
         let (mut tx, rx) = stream.split();
-        let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(1000);
+        let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(MAX_BUFFER);
         let sender = send_ch.clone();
         tokio::spawn(async move {
             while let Some(x) = recv_ch.next().await {
-                println!("Sending: {}", x);
                 let _ = tx.send(Message::from(x)).await;
             }
         });
 
+        let rx: MappedReceiveStream = rx.map(|x| {
+            match x {
+                Ok(x) => Ok(x.into_data()),
+                Err(e) => Err(Error::WebsocketError(format!("{}", e)))
+            }
+        });
+
         self.sender = Some(sender);
-        self.receiver = Some(rx);
+        self.receiver = Some(Arc::new(Mutex::new(rx)));
         Ok(self)
     }
 
@@ -62,14 +86,11 @@ impl WsClient {
         }
     }
 
-    pub fn receiver(&mut self) -> impl Stream<Item=Result<Vec<u8>>> + '_ {
-        self.receiver.as_mut().unwrap()
-            .map(|x| {
-                match x {
-                    Ok(x) => Ok(x.into_data()),
-                    Err(e) => Err(Error::WebsocketError(format!("{}", e)))
-                }
-            })
+    pub fn receiver(&mut self) -> Arc<Mutex<MappedReceiveStream>> {
+        match self.receiver {
+            Some(ref receiver) => receiver.clone(),
+            None => panic!("No receiver")
+        }
     }
 }
 
@@ -151,12 +172,9 @@ mod test {
         sender.send("test".to_string()).await.unwrap();
         sender.send("test2".to_string()).await.unwrap();
 
-        let msg = client.receiver().next().await.unwrap();
+        let msg = client.receiver().lock().await.next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
-
-        let msg = client.receiver().next().await.unwrap();
-        println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
-        let msg = client.receiver().next().await.unwrap();
+        let msg = client.receiver().lock().await.next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
     }
 }

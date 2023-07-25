@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::error::Error;
 use crate::Result;
 use crate::model::{Market, OrderBook};
+use std::sync::Arc;
 
 pub use binance::BinanceUsdm;
 pub(in self) use property::Properties;
@@ -12,9 +13,13 @@ pub use property::PropertiesBuilder;
 
 
 use async_trait::async_trait;
+use futures::channel::mpsc;
+use futures::channel::mpsc::Receiver;
 use futures::Stream;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
+
+use futures::StreamExt;
 
 pub struct Unifier {
     unified_market_to_symbol_id: RwLock<HashMap<Market, String>>,
@@ -40,16 +45,28 @@ impl Unifier {
     }
 }
 
-
+pub enum StreamItem {
+    None,
+    OrderBook(OrderBook),
+}
 
 pub struct ExchangeBase {
     pub http_client: HttpClient,
     pub ws_client: WsClient,
 
+    pub stream_parser: fn(Vec<u8>) -> StreamItem,
+
+    order_book_stream_sender: mpsc::Sender<OrderBook>,
+    pub order_book_stream: Arc<Mutex<mpsc::Receiver<OrderBook>>>,
+
     pub markets: Vec<Market>,
 
     pub unifier: Unifier,
 }
+
+const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
+const MAX_CAPACITY: usize = !(OPEN_MASK);
+const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
 
 impl ExchangeBase {
     pub fn new(properties: Properties) -> Result<Self> {
@@ -67,16 +84,47 @@ impl ExchangeBase {
             .port(properties.port.unwrap())
             .build().unwrap();
         let mut ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
+        let (order_book_stream_sender, order_book_stream) = mpsc::channel::<OrderBook>(MAX_BUFFER);
+        let order_book_stream = Arc::new(Mutex::new(order_book_stream));
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
             ws_client,
             http_client,
+            stream_parser: properties.stream_parser.unwrap_or(|_| StreamItem::None),
+            order_book_stream_sender,
+            order_book_stream,
         })
     }
 
     pub async fn connect(&mut self) -> Result<()> {
         self.ws_client.connect().await?;
+        let stream_parser = self.stream_parser;
+        let mut order_book_stream_sender = self.order_book_stream_sender.clone();
+        let receiver = self.ws_client.receiver();
+
+        tokio::spawn(async move {
+            let mut guard = receiver.lock().await;
+            loop {
+                let message = guard.next().await;
+                match message {
+                    Some(message) => {
+                        match stream_parser(message.unwrap()) {
+                            StreamItem::None => {
+                                continue;
+                            }
+                            StreamItem::OrderBook(order_book) => {
+                                order_book_stream_sender.try_send(order_book).unwrap();
+                            }
+                        }
+                    }
+                    None => {
+                        break;
+                    }
+                };
+            }
+        });
+
         Ok(())
     }
 }
@@ -118,7 +166,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> Result<()> {
         Err(Error::NotImplemented)
     }
-    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Box<dyn Stream<Item=OrderBook> + Unpin + '_>> {
+    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Arc<Mutex<Receiver<OrderBook>>>> {
         Err(Error::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> Result<()> {
