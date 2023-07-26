@@ -1,3 +1,4 @@
+use std::thread::sleep;
 use ccxtr::{BinanceUsdm, PropertiesBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::Market;
@@ -19,7 +20,10 @@ async fn main() {
         }
     }
     let mut stream = ex.watch_order_book(target_markets).await.unwrap();
-    while let Some(x) = stream.next().await {
-        println!("{:?}", x);
-    }
+    tokio::spawn(async move {
+        while let Some(x) = stream.next().await {
+            println!("{:?}", x);
+        }
+    });
+    sleep(std::time::Duration::from_secs(1000));
 }

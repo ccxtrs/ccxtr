@@ -7,7 +7,7 @@ pub struct Properties {
     pub(crate) api_key: Option<String>,
     pub(crate) secret_key: Option<String>,
     pub(crate) ws_endpoint: Option<String>,
-    pub(crate) stream_parser: Option<fn(Vec<u8>) -> StreamItem>,
+    pub(crate) stream_parser: Option<fn(Vec<u8>) -> Option<StreamItem>>,
 }
 
 #[derive(Default)]
@@ -17,7 +17,7 @@ pub struct PropertiesBuilder {
     api_key: Option<String>,
     secret_key: Option<String>,
     ws_endpoint: Option<String>,
-    stream_parser: Option<fn(Vec<u8>) -> StreamItem>,
+    stream_parser: Option<fn(Vec<u8>) -> Option<StreamItem>>,
 }
 
 impl PropertiesBuilder {
@@ -50,7 +50,7 @@ impl PropertiesBuilder {
         self
     }
 
-    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>) -> StreamItem) -> Self {
+    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>) -> Option<StreamItem>) -> Self {
         self.stream_parser = Some(stream_parser);
         self
     }

@@ -11,7 +11,7 @@ pub use property::PropertiesBuilder;
 
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
 use crate::error::Error;
-use crate::model::{Market, OrderBook};
+use crate::model::{Market, Order, OrderBook};
 use crate::Result;
 
 mod binance;
@@ -42,7 +42,6 @@ impl Unifier {
 }
 
 pub enum StreamItem {
-    None,
     OrderBook(OrderBook),
 }
 
@@ -50,7 +49,7 @@ pub struct ExchangeBase {
     pub(super) http_client: HttpClient,
     pub(super) ws_client: WsClient,
 
-    stream_parser: fn(Vec<u8>) -> StreamItem,
+    stream_parser: fn(Vec<u8>) -> Option<StreamItem>,
 
     order_book_stream_sender: mpsc::Sender<OrderBook>,
     order_book_stream: Option<mpsc::Receiver<OrderBook>>,
@@ -87,7 +86,7 @@ impl ExchangeBase {
             unifier: Unifier::new(),
             ws_client,
             http_client,
-            stream_parser: properties.stream_parser.unwrap_or(|_| StreamItem::None),
+            stream_parser: properties.stream_parser.unwrap_or(|_| None),
             order_book_stream_sender,
             order_book_stream,
         })
@@ -105,11 +104,11 @@ impl ExchangeBase {
                 match message {
                     Some(message) => {
                         match stream_parser(message.unwrap()) {
-                            StreamItem::None => {
+                            None => {
                                 continue;
                             }
-                            StreamItem::OrderBook(order_book) => {
-                                order_book_stream_sender.try_send(order_book).unwrap();
+                            Some(StreamItem::OrderBook(order_book)) => {
+                                let _ = order_book_stream_sender.try_send(order_book);
                             }
                         }
                     }
@@ -184,22 +183,22 @@ pub trait Exchange {
     async fn fetch_balance(&self) -> Result<()> {
         Err(Error::NotImplemented)
     }
-    async fn create_order(&self) -> Result<()> {
+    async fn create_order(&self, _: Order) -> Result<Order> {
         Err(Error::NotImplemented)
     }
-    async fn cancel_order(&self) -> Result<()> {
+    async fn cancel_order(&self, _: Order) -> Result<Order> {
         Err(Error::NotImplemented)
     }
-    async fn fetch_order(&self) -> Result<()> {
+    async fn fetch_order(&self) -> Result<Order> {
         Err(Error::NotImplemented)
     }
-    async fn fetch_orders(&self) -> Result<()> {
+    async fn fetch_orders(&self) -> Result<Vec<Order>> {
         Err(Error::NotImplemented)
     }
-    async fn fetch_open_orders(&self) -> Result<()> {
+    async fn fetch_open_orders(&self) -> Result<Vec<Order>> {
         Err(Error::NotImplemented)
     }
-    async fn fetch_closed_orders(&self) -> Result<()> {
+    async fn fetch_closed_orders(&self) -> Result<Vec<Order>> {
         Err(Error::NotImplemented)
     }
     async fn fetch_my_trades(&self) -> Result<()> {

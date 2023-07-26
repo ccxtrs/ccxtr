@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{client::NONE, Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
-use crate::model::{ContractType, Decimal, OrderBook};
+use crate::model::{ContractType, Decimal, Order, OrderBook, OrderBookUnit};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
@@ -16,6 +17,58 @@ pub struct BinanceUsdm {
     exchange_base: ExchangeBase,
 }
 
+
+#[derive(Serialize, Deserialize)]
+struct WatchOrderBookResponse {
+    #[serde(rename = "e")]
+    event_type: String,
+    #[serde(rename = "E")]
+    event_time: i64,
+    #[serde(rename = "T")]
+    transaction_time: i64,
+    #[serde(rename = "s")]
+    symbol: String,
+    #[serde(rename = "U")]
+    first_update_id: i64,
+    #[serde(rename = "u")]
+    final_update_id: i64,
+    #[serde(rename = "b")]
+    bids: Vec<[String; 2]>,
+    #[serde(rename = "a")]
+    asks: Vec<[String; 2]>,
+    #[serde(rename = "pu")]
+    previous_final_update_id: i64,
+}
+
+
+#[derive(Serialize, Deserialize)]
+struct WatchCommonResponse {
+    result: Option<String>,
+    id: Option<i64>,
+    #[serde(rename = "e")]
+    event_type: Option<String>,
+}
+
+impl From<Vec<u8>> for WatchCommonResponse {
+    fn from(message: Vec<u8>) -> Self {
+        serde_json::from_slice(&message).unwrap()
+    }
+}
+
+impl From<Vec<u8>> for WatchOrderBookResponse {
+    fn from(message: Vec<u8>) -> Self {
+        serde_json::from_slice(&message).unwrap()
+    }
+}
+
+impl From<[String; 2]> for OrderBookUnit {
+    fn from(value: [String; 2]) -> Self {
+        OrderBookUnit {
+            price: value[0].parse::<Decimal>().unwrap(),
+            amount: value[1].parse::<Decimal>().unwrap(),
+        }
+    }
+}
 
 impl BinanceUsdm {
     pub fn new(props: Properties) -> Result<Self> {
@@ -26,9 +79,26 @@ impl BinanceUsdm {
             .api_key(props.api_key.unwrap_or_default())
             .secret_key(props.secret_key.unwrap_or_default())
             .stream_parser(|message| {
-                StreamItem::OrderBook(OrderBook::new())
+                let common_message = WatchCommonResponse::from(message.clone());
+                if common_message.result.is_some() {
+                    return None;
+                }
+                match common_message.event_type {
+                    Some(event_type) if event_type == "depthUpdate" => {
+                        let resp = WatchOrderBookResponse::from(message);
+                        let book = OrderBook::new(
+                            resp.bids.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
+                            resp.asks.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
+                            resp.symbol,
+                            resp.event_time,
+                            Utc.timestamp_millis_opt(resp.event_time).unwrap().to_rfc3339(),
+                            None,
+                        );
+                        Some(StreamItem::OrderBook(book))
+                    }
+                    _ => return None,
+                }
             });
-
 
         Ok(Self {
             exchange_base: ExchangeBase::new(common_props.build())?,
@@ -85,6 +155,11 @@ impl Exchange for BinanceUsdm {
 
         self.exchange_base.order_book_stream.take()
             .ok_or(Error::WebsocketError("no receiver".into()))
+    }
+
+    async fn create_order(&self, request: Order) -> Result<Order> {
+        // let result: CreateOrderResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", NONE).await?;
+        Err(Error::NotImplemented)
     }
 }
 
