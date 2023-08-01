@@ -43,5 +43,5 @@ async fn main() {
         println!("create order error: {:?}", e);
         Err(e)
     });
-    sleep(std::time::Duration::from_secs(100));
+    sleep(std::time::Duration::from_secs(1));
 }

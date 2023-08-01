@@ -243,8 +243,8 @@ pub(in super) struct CreateOrderResponse {
     #[serde(rename = "type")]
     order_type: String,
     orig_type: String,
-    activate_price: String,
-    price_rate: String,
+    activate_price: Option<String>,
+    price_rate: Option<String>,
     update_time: i64,
     working_type: String,
     price_protect: bool,
