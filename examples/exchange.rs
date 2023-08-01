@@ -1,7 +1,7 @@
 use std::thread::sleep;
 use ccxtr::{BinanceUsdm, PropertiesBuilder};
 use ccxtr::Exchange;
-use ccxtr::model::{Decimal, Market, MarketType, Order, OrderSide, OrderType};
+use ccxtr::model::{Market, MarketType, Order, OrderSide, OrderType};
 use futures::StreamExt;
 use rust_decimal::prelude::FromPrimitive;
 
@@ -35,8 +35,8 @@ async fn main() {
         market: btc_usdt.unwrap().clone(),
         order_type: OrderType::Limit,
         side: OrderSide::Buy,
-        price: Some(Decimal::from(20000)),
-        amount: Decimal::from_f64(0.001).unwrap(),
+        price: Some(20000_f64),
+        amount: 0.001,
         ..Default::default()
     };
     let order = ex.create_order(order).await.or_else(|e| {

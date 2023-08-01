@@ -12,7 +12,7 @@ use crate::{Error, exchange::{Exchange, Properties}, model::{Market, MarketType}
 use crate::client::{EMPTY_BODY, EMPTY_QUERY};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
-use crate::model::{ContractType, Decimal, Order, OrderBook, OrderBookUnit, OrderStatus, TimeInForce};
+use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, TimeInForce};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
@@ -66,12 +66,14 @@ impl From<Vec<u8>> for WatchOrderBookResponse {
     }
 }
 
-impl From<[String; 2]> for OrderBookUnit {
-    fn from(value: [String; 2]) -> Self {
-        OrderBookUnit {
-            price: value[0].parse::<Decimal>().unwrap(),
-            amount: value[1].parse::<Decimal>().unwrap(),
-        }
+impl TryFrom<&[String; 2]> for OrderBookUnit {
+    type Error = Error;
+
+    fn try_from(value: &[String; 2]) -> Result<Self> {
+        Ok(OrderBookUnit {
+            price: value[0].parse::<f64>()?,
+            amount: value[1].parse::<f64>()?,
+        })
     }
 }
 
@@ -113,9 +115,21 @@ impl BinanceUsdm {
                                 format!("Unknown market {}", resp.symbol),
                             ))));
                         }
+                        let bids = resp.bids.iter().map(|b| b.try_into()).collect::<Result<Vec<OrderBookUnit>>>();
+                        if bids.is_err() {
+                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                                format!("Invalid bid {:?}", resp.bids),
+                            ))));
+                        }
+                        let asks = resp.asks.iter().map(|b| b.try_into()).collect::<Result<Vec<OrderBookUnit>>>();
+                        if asks.is_err() {
+                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                                format!("Invalid ask {:?}", resp.asks),
+                            ))));
+                        }
                         let book = OrderBook::new(
-                            resp.bids.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
-                            resp.asks.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
+                            bids.unwrap(),
+                            asks.unwrap(),
                             market.unwrap(),
                             resp.event_time,
                             Utc.timestamp_millis_opt(resp.event_time).unwrap().to_rfc3339(),
@@ -349,20 +363,20 @@ impl Into<Result<Market>> for &Symbol {
         for filter in self.filters.iter().flatten() {
             match filter.filter_type.as_str() {
                 "PRICE_FILTER" => {
-                    let start = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".into()))?.parse::<Decimal>()?;
-                    let end = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".into()))?.parse::<Decimal>()?;
+                    let start = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".into()))?.parse::<f64>()?;
+                    let end = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".into()))?.parse::<f64>()?;
                     limit.price = Some(Range { start, end });
                     let tick_size = filter.tick_size.as_ref().ok_or_else(|| Error::MissingField("tick_size".into()))?;
                     precision.price = Some(into_precision(tick_size.clone())?);
                 }
                 "LOT_SIZE" => {
-                    let start = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".into()))?.parse::<Decimal>()?;
-                    let end = filter.max_qty.as_ref().ok_or_else(|| Error::MissingField("max_qty".into()))?.parse::<Decimal>()?;
+                    let start = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".into()))?.parse::<f64>()?;
+                    let end = filter.max_qty.as_ref().ok_or_else(|| Error::MissingField("max_qty".into()))?.parse::<f64>()?;
                     limit.amount = Some(Range { start, end });
                 }
                 "MIN_NOTIONAL" => {
-                    let start = filter.notional.as_ref().ok_or_else(|| Error::MissingField("notional".into()))?.parse::<Decimal>()?;
-                    limit.cost = Some(Range { start, end: Decimal::MAX });
+                    let start = filter.notional.as_ref().ok_or_else(|| Error::MissingField("notional".into()))?.parse::<f64>()?;
+                    limit.cost = Some(Range { start, end: f64::MAX });
                 }
                 // "MARKET_LOT_SIZE" => {},
                 // "MAX_NUM_ORDERS" => {},

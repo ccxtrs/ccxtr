@@ -197,16 +197,4 @@ mod test {
         let msg = receiver.as_mut().unwrap().next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
     }
-
-
-
-    #[tokio::test]
-    async fn test_post() {
-        let client = crate::client::HttpClientBuilder::new()
-            .host("http://localhost".to_string())
-            .port(3246)
-            .build().unwrap();
-        let result: Result<String, Error> = client.post("/test", crate::client::EMPTY_QUERY, crate::client::EMPTY_BODY).await;
-        println!("{:?}", result);
-    }
 }

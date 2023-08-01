@@ -48,12 +48,6 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-impl From<rust_decimal::Error> for Error {
-    fn from(e: rust_decimal::Error) -> Self {
-        Error::ParseError(format!("{}", e))
-    }
-}
-
 impl From<ParseFloatError> for Error {
     fn from(e: ParseFloatError) -> Self {
         Error::ParseError(format!("{}", e))

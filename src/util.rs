@@ -1,21 +1,25 @@
 use std::ops::Neg;
-use rust_decimal::Decimal;
 use crate::Result;
-use rust_decimal::prelude::ToPrimitive;
 use std::str::FromStr;
-use rust_decimal::MathematicalOps;
-use crate::Error::ParseError;
 
 pub(in crate) fn into_precision(s: String) -> Result<isize> {
-    let d = Decimal::from_str(&s)?;
+    let d = f64::from_str(&s)?;
 
-    if d.gt(&Decimal::ONE){
-        match d.log10().neg().to_isize() {
-            Some(p) => return Ok(p),
-            None => return Err(ParseError("Failed to convert precision".to_string()))
+    if d > 1_f64 {
+        return Ok(d.log10().neg() as isize);
+    }
+
+    let mut precision = 0;
+    for c in s.chars() {
+        if c == '0' {
+            precision += 1;
+        } else if c == '.' {
+            precision = 0;
+        } else {
+            break;
         }
     }
-    Ok(d.scale() as isize)
+    Ok(precision + 1 as isize)
 }
 
 #[cfg(test)]

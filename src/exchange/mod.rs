@@ -90,7 +90,6 @@ impl ExchangeBase {
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
         let (order_book_stream_sender, order_book_stream) = mpsc::channel::<Result<OrderBook>>(MAX_BUFFER);
-        let (error_stream_sender, error_stream) = mpsc::channel::<Error>(MAX_BUFFER);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),

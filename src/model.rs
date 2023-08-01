@@ -5,8 +5,6 @@ use std::ops;
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-pub type Decimal = rust_decimal::Decimal;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OptionType {
@@ -42,10 +40,10 @@ pub enum FeeSide {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MarketFee {
-    TakerBasisPoints(Decimal),
-    MakerBasisPoints(Decimal),
-    TakerFixedAmount(Decimal),
-    MakerFixedAmount(Decimal),
+    TakerBasisPoints(f64),
+    MakerBasisPoints(f64),
+    TakerFixedAmount(f64),
+    MakerFixedAmount(f64),
 }
 
 
@@ -70,7 +68,7 @@ pub struct Market {
     pub settle: Option<String>,
 
     /// the size of one contract, only used if `market_type` is a future, a swap or an option.
-    pub contract_size: Option<Decimal>,
+    pub contract_size: Option<f64>,
 
     /// linear or inverse, only used if `market_type` is a future, a swap or an option.
     pub contract_type: Option<ContractType>,
@@ -82,7 +80,7 @@ pub struct Market {
     pub expiry_datetime: String,
 
     /// price at which a put or call option can be exercised
-    pub strike: Option<Decimal>,
+    pub strike: Option<f64>,
 
     /// call or put, call option represents an option with the right to buy and put an option
     /// with the right to sell
@@ -197,7 +195,7 @@ pub struct Currency {
     /// The withdrawal fee value as specified by the exchange. In most cases it means a flat fixed
     /// amount paid in the same currency. If the exchnange does not specify it via public endpoints,
     /// the fee can be None.
-    pub fee: Option<Decimal>,
+    pub fee: Option<f64>,
 
     /// Precision accepted in values by exchanges upon referencing this currency. The value of this
     /// property depends on exchange.precisionMode.
@@ -216,7 +214,7 @@ pub struct Currency {
     pub network: Network,
 }
 
-pub type Range = ops::Range<Decimal>;
+pub type Range = ops::Range<f64>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrencyLimit {
@@ -241,7 +239,7 @@ pub struct Network {
     /// The withdrawal fee value as specified by the exchange. In most cases it means a flat fixed
     /// amount paid in the same currency. If the exchnange does not specify it via public endpoints,
     /// the fee can be None.
-    pub fee: Option<Decimal>,
+    pub fee: Option<f64>,
 
     /// Precision accepted in values by exchanges upon referencing this currency. The value of this
     /// property depends on exchange.precisionMode.
@@ -293,22 +291,22 @@ pub struct Order {
     pub side: OrderSide,
 
     /// float price in quote currency (may be empty for market orders)
-    pub price: Option<Decimal>,
+    pub price: Option<f64>,
 
     /// float average filling price
-    pub average: Option<Decimal>,
+    pub average: Option<f64>,
 
     /// ordered amount of base currency
-    pub amount: Decimal,
+    pub amount: f64,
 
     /// filled amount of base currency
-    pub filled: Option<Decimal>,
+    pub filled: Option<f64>,
 
     /// remaining amount to fill
-    pub remaining: Option<Decimal>,
+    pub remaining: Option<f64>,
 
     /// 'filled' * 'price' (filling price used where available)
-    pub cost: Option<Decimal>,
+    pub cost: Option<f64>,
 
     /// a list of order trades/executions
     pub trades: Option<Vec<Trade>>,
@@ -332,7 +330,7 @@ impl Default for Order {
             time_in_force: None,
             side: OrderSide::Buy,
             price: None,
-            amount: Decimal::default(),
+            amount: f64::default(),
             cost: None,
             average: None,
             filled: None,
@@ -370,13 +368,13 @@ pub struct Trade {
     pub is_maker: bool,
 
     /// float price in quote currency
-    pub price: Decimal,
+    pub price: f64,
 
     /// amount of base currency
-    pub amount: Decimal,
+    pub amount: f64,
 
     /// total cost, `price * amount`,
-    pub cost: Decimal,
+    pub cost: f64,
 
     /// provided by exchange or calculated by ccxtr
     pub fee: Option<OrderFee>,
@@ -392,10 +390,10 @@ pub struct OrderFee {
     currency: String,
 
     /// the fee amount in that currency
-    cost: Decimal,
+    cost: f64,
 
     /// the fee rate (if available)
-    rate: Option<Decimal>,
+    rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -539,8 +537,8 @@ impl From<String> for OrderBook {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderBookUnit {
-    pub price: Decimal,
-    pub amount: Decimal,
+    pub price: f64,
+    pub amount: f64,
 }
 
 
