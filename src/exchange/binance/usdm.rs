@@ -4,17 +4,22 @@ use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
 use futures::SinkExt;
 use futures::channel::mpsc::Receiver;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use serde::{Deserialize, Serialize};
 
-use crate::{client::NONE, Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
+use crate::{Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
+use crate::client::{EMPTY_BODY, EMPTY_QUERY};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
-use crate::model::{ContractType, Decimal, Order, OrderBook, OrderBookUnit};
+use crate::model::{ContractType, Decimal, Order, OrderBook, OrderBookUnit, OrderStatus, TimeInForce};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
 pub struct BinanceUsdm {
     exchange_base: ExchangeBase,
+    api_key: Option<String>,
+    secret: Option<String>,
 }
 
 
@@ -70,15 +75,31 @@ impl From<[String; 2]> for OrderBookUnit {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct ErrorResponse {
+    code: i64,
+    msg: String,
+}
+
 impl BinanceUsdm {
     pub fn new(props: Properties) -> Result<Self> {
         let common_props = PropertiesBuilder::new()
             .host(props.host.unwrap_or_else(|| "https://fapi.binance.com".into()))
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://fstream.binance.com/ws")
-            .api_key(props.api_key.unwrap_or_default())
-            .secret_key(props.secret_key.unwrap_or_default())
-            .stream_parser(|message| {
+            .error_parser(|message| {
+                let error: ErrorResponse = serde_json::from_str(&message).unwrap();
+                match error.code {
+                    -2019 => Error::HttpError("Margin is insufficient".to_string()),
+                    -1013 => Error::HttpError("Invalid quantity".to_string()),
+                    -1021 => Error::HttpError("Timestamp for this request is outside of the recvWindow".to_string()),
+                    -1022 => Error::HttpError("Signature for this request is not valid".to_string()),
+                    -1100 => Error::HttpError("Illegal characters found in a parameter".to_string()),
+                    -1101 => Error::HttpError("Too many parameters sent for this endpoint".to_string()),
+                    _ => Error::HttpError(error.msg),
+                }
+            })
+            .stream_parser(|message, unifier| {
                 let common_message = WatchCommonResponse::from(message.clone());
                 if common_message.result.is_some() {
                     return None;
@@ -86,15 +107,21 @@ impl BinanceUsdm {
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         let resp = WatchOrderBookResponse::from(message);
+                        let market = unifier.get_market(&resp.symbol);
+                        if market.is_none() {
+                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                                format!("Unknown market {}", resp.symbol),
+                            ))));
+                        }
                         let book = OrderBook::new(
                             resp.bids.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
                             resp.asks.into_iter().map(|b| b.into()).collect::<Vec<OrderBookUnit>>(),
-                            resp.symbol,
+                            market.unwrap(),
                             resp.event_time,
                             Utc.timestamp_millis_opt(resp.event_time).unwrap().to_rfc3339(),
                             None,
                         );
-                        Some(StreamItem::OrderBook(book))
+                        Some(StreamItem::OrderBook(Ok(book)))
                     }
                     _ => return None,
                 }
@@ -102,7 +129,18 @@ impl BinanceUsdm {
 
         Ok(Self {
             exchange_base: ExchangeBase::new(common_props.build())?,
+            api_key: props.api_key,
+            secret: props.secret,
         })
+    }
+
+    fn auth(&self, request: &String) -> Result<String> {
+        if self.api_key.is_none() || self.secret.is_none() {
+            return Err(Error::MissingCredentials);
+        }
+        let mut signed_key = Hmac::<Sha256>::new_from_slice(self.secret.clone().unwrap().as_bytes())?;
+        signed_key.update(request.as_bytes());
+        Ok(hex::encode(signed_key.finalize().into_bytes()))
     }
 
     pub async fn connect(&mut self) -> Result<()> {
@@ -120,29 +158,31 @@ impl Exchange for BinanceUsdm {
     }
 
     async fn fetch_markets(&mut self) -> Result<&Vec<Market>> {
-        let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", NONE).await?;
-        let result: Result<Vec<Market>> = result.try_into();
-        match result {
-            Ok(markets) => {
-                for m in &markets {
-                    self.exchange_base.unifier.insert_market_symbol_id(&m, &m.id).await;
-                }
-                self.exchange_base.markets = markets;
-                Ok(&self.exchange_base.markets)
+        let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
+        self.exchange_base.unifier.reset();
+        let mut markets = vec![];
+        for s in result.symbols {
+            if s.symbol.is_none() {
+                continue;
             }
-            Err(e) => Err(e),
+            let market: Result<Market> = (&s).into();
+            let market = market?;
+            self.exchange_base.unifier.insert_market_symbol_id(&market, &(s.symbol.unwrap()));
+            markets.push(market);
         }
+        self.exchange_base.markets = markets;
+        Ok(&self.exchange_base.markets)
     }
 
-    async fn watch_order_book(&mut self, markets: Vec<Market>) -> Result<Receiver<OrderBook>> {
+    async fn watch_order_book(&mut self, markets: &Vec<Market>) -> Result<Receiver<Result<OrderBook>>> {
         let mut sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
         let mut symbol_ids: Vec<String> = Vec::new();
-        for m in &markets {
-            match self.exchange_base.unifier.get_symbol_id(&m).await {
+        for m in markets {
+            match self.exchange_base.unifier.get_symbol_id(&m) {
                 Some(symbol_id) => symbol_ids.push(symbol_id),
-                None => return Err(Error::SymbolNotFound(m.symbol.clone())),
+                None => return Err(Error::SymbolNotFound(format!("{:?}", m))),
             }
         }
         let params = symbol_ids.iter()
@@ -158,10 +198,87 @@ impl Exchange for BinanceUsdm {
     }
 
     async fn create_order(&self, request: Order) -> Result<Order> {
-        // let result: CreateOrderResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", NONE).await?;
-        Err(Error::NotImplemented)
+        if request.price.is_none() {
+            return Err(Error::MissingPrice);
+        }
+        let symbol_id = self.exchange_base.unifier.get_symbol_id(&request.market).ok_or(Error::SymbolNotFound(format!("{}", request.market)))?;
+        let timestamp = Utc::now().timestamp_millis();
+        let params = format!("symbol={}&side={}&type={}&quantity={}&price={}&timeInForce={}&recvWindow=5000&timestamp={}",
+                             symbol_id,
+                             util::get_exchange_order_side(&request.side),
+                             util::get_exchange_order_type(&request.order_type)?,
+                             request.amount,
+                             request.price.unwrap(),
+                             util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC))?,
+                             timestamp);
+        let signature = self.auth(&params)?;
+        let params = format!("{}&signature={}", params, signature);
+        let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
+        let response: CreateOrderResponse = self.exchange_base.http_client.post("/fapi/v1/order", Some(headers), EMPTY_QUERY, Some(&params)).await?;
+        let mut order: Order = response.try_into()?;
+        order.market = request.market;
+        order.order_type = request.order_type;
+        Ok(order)
     }
 }
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(in super) struct CreateOrderResponse {
+    client_order_id: String,
+    cum_quote: String,
+    executed_qty: String,
+    order_id: i64,
+    avg_price: String,
+    orig_qty: String,
+    price: String,
+    reduce_only: bool,
+    side: String,
+    position_side: String,
+    status: String,
+    stop_price: String,
+    close_position: bool,
+    symbol: String,
+    time_in_force: String,
+    #[serde(rename = "type")]
+    order_type: String,
+    orig_type: String,
+    activate_price: String,
+    price_rate: String,
+    update_time: i64,
+    working_type: String,
+    price_protect: bool,
+}
+
+impl TryFrom<CreateOrderResponse> for Order {
+    type Error = Error;
+
+    fn try_from(resp: CreateOrderResponse) -> std::result::Result<Self, Self::Error> {
+        let timestamp = Utc.timestamp_millis_opt(resp.update_time).unwrap();
+        let order_status = util::get_unified_order_status(&resp.status)?;
+        let amount = resp.orig_qty.parse()?;
+        let remaining = match order_status {
+            OrderStatus::Open =>  Some(amount),
+            _ => None,
+        };
+        Ok(Order {
+            id: Some(resp.order_id.to_string()),
+            client_order_id: Some(resp.client_order_id),
+            datetime: timestamp.to_rfc3339(),
+            timestamp: resp.update_time,
+            status: order_status,
+            time_in_force: Some(util::get_unified_time_in_force(&resp.time_in_force)?),
+            side: util::get_unified_order_side(&resp.side)?,
+            price: Some(resp.price.parse()?),
+            average: Some(resp.avg_price.parse()?),
+            amount: resp.orig_qty.parse()?,
+            remaining,
+            ..Default::default()
+        })
+    }
+}
+
+
 
 #[derive(Serialize)]
 struct LoadMarketsRequest {}
@@ -183,23 +300,23 @@ impl TryInto<Vec<Market>> for FetchMarketsResponse {
 
     fn try_into(self) -> std::result::Result<Vec<Market>, Self::Error> {
         self.symbols.into_iter()
-            .map(|s| s.into())
+            .map(|s| (&s).into())
             .collect()
     }
 }
 
 
-impl Into<Result<Market>> for Symbol {
+impl Into<Result<Market>> for &Symbol {
     fn into(self) -> Result<Market> {
-        let base_id = self.base_asset.ok_or_else(|| Error::MissingField("base_asset".into()))?;
-        let quote_id = self.quote_asset.ok_or_else(|| Error::MissingField("quote_asset".into()))?;
-        let settle_id = self.margin_asset;
+        let base_id = self.base_asset.clone().ok_or_else(|| Error::MissingField("base_asset".into()))?;
+        let quote_id = self.quote_asset.clone().ok_or_else(|| Error::MissingField("quote_asset".into()))?;
+        let settle_id = self.margin_asset.clone();
 
 
-        let base = util::to_unified_symbol(&base_id);
-        let quote = util::to_unified_symbol(&quote_id);
+        let base = util::to_unified_asset(&base_id);
+        let quote = util::to_unified_asset(&quote_id);
         let settle = settle_id.as_ref()
-            .and_then(|s| Some(util::to_unified_symbol(s)));
+            .and_then(|s| Some(util::to_unified_asset(s)));
 
         let market_type = match self.contract_type {
             Some(ref s) if s == "PERPETUAL" => MarketType::Swap,
@@ -214,15 +331,7 @@ impl Into<Result<Market>> for Symbol {
                 _ => None,
             });
 
-        let symbol = match market_type {
-            MarketType::Swap => format!("{base}/{quote}"),
-            MarketType::Futures => format!("{base}/{quote}:{}", delivery_date
-                .and_then(|dt| Some(dt.format("%Y%m%d").to_string()))
-                .unwrap_or_else(|| "".into())),
-            _ => format!("{base}/{quote}"),
-        };
-
-        let active = util::is_active(self.status);
+        let active = util::is_active(self.status.clone());
 
         let mut limit = MarketLimit {
             amount: None,
@@ -263,16 +372,11 @@ impl Into<Result<Market>> for Symbol {
             }
         }
         Ok(Market {
-            id: self.symbol.ok_or_else(|| Error::MissingField("symbol".into()))?,
-            symbol,
             base,
             quote,
-            base_id,
-            quote_id,
             active,
             market_type,
             settle,
-            settle_id,
             contract_size: None,
             contract_type: Some(ContractType::Linear),
             expiry: self.delivery_date,

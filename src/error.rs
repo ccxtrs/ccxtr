@@ -1,4 +1,5 @@
 use std::num::ParseFloatError;
+use hmac::digest::InvalidLength;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,6 +20,26 @@ pub enum Error {
     MissingProperties(String),
     #[error("symbol not found {0}")]
     SymbolNotFound(String),
+    #[error("missing credentials")]
+    MissingCredentials,
+    #[error("fetch markets first")]
+    MissingMarkets,
+    #[error("missing price")]
+    MissingPrice,
+
+    #[error("unsupported order type {0}")]
+    UnsupportedOrderType(String),
+    #[error("unsupported order side {0}")]
+    UnsupportedOrderSide(String),
+    #[error("unsupported order status {0}")]
+    UnsupportedOrderStatus(String),
+    #[error("unsupported time in force {0}")]
+    UnsupportedTimeInForce(String),
+    #[error("credentials error {0}")]
+    CredentialsError(String),
+
+    #[error("invalid order book {0}")]
+    InvalidOrderBook(String),
 }
 
 impl From<reqwest::Error> for Error {
@@ -36,5 +57,11 @@ impl From<rust_decimal::Error> for Error {
 impl From<ParseFloatError> for Error {
     fn from(e: ParseFloatError) -> Self {
         Error::ParseError(format!("{}", e))
+    }
+}
+
+impl From<InvalidLength> for Error {
+    fn from(value: InvalidLength) -> Self {
+        Error::CredentialsError(format!("{}", value))
     }
 }

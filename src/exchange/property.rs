@@ -1,13 +1,15 @@
-use crate::exchange::StreamItem;
+use crate::Error;
+use crate::exchange::{StreamItem, Unifier};
 
 #[derive(Debug)]
 pub struct Properties {
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,
     pub(crate) api_key: Option<String>,
-    pub(crate) secret_key: Option<String>,
+    pub(crate) secret: Option<String>,
     pub(crate) ws_endpoint: Option<String>,
-    pub(crate) stream_parser: Option<fn(Vec<u8>) -> Option<StreamItem>>,
+    pub(crate) stream_parser: Option<fn(Vec<u8>, &Unifier) -> Option<StreamItem>>,
+    pub(crate) error_parser: Option<fn(String) -> Error>,
 }
 
 #[derive(Default)]
@@ -15,9 +17,10 @@ pub struct PropertiesBuilder {
     host: Option<String>,
     port: Option<u16>,
     api_key: Option<String>,
-    secret_key: Option<String>,
+    secret: Option<String>,
     ws_endpoint: Option<String>,
-    stream_parser: Option<fn(Vec<u8>) -> Option<StreamItem>>,
+    stream_parser: Option<fn(Vec<u8>, &Unifier) -> Option<StreamItem>>,
+    error_parser: Option<fn(String) -> Error>,
 }
 
 impl PropertiesBuilder {
@@ -40,8 +43,8 @@ impl PropertiesBuilder {
         self
     }
 
-    pub fn secret_key<S: Into<String>>(mut self, secret_key: S) -> Self {
-        self.secret_key = Some(secret_key.into());
+    pub fn secret<S: Into<String>>(mut self, secret_key: S) -> Self {
+        self.secret = Some(secret_key.into());
         self
     }
 
@@ -50,8 +53,13 @@ impl PropertiesBuilder {
         self
     }
 
-    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>) -> Option<StreamItem>) -> Self {
+    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>) -> Self {
         self.stream_parser = Some(stream_parser);
+        self
+    }
+
+    pub fn error_parser(mut self, error_parser: fn(String) -> Error) -> Self {
+        self.error_parser = Some(error_parser);
         self
     }
 
@@ -60,9 +68,10 @@ impl PropertiesBuilder {
             host: self.host,
             port: self.port,
             api_key: self.api_key,
-            secret_key: self.secret_key,
+            secret: self.secret,
             ws_endpoint: self.ws_endpoint,
             stream_parser: self.stream_parser,
+            error_parser: self.error_parser,
         }
     }
 }

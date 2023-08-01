@@ -1,9 +1,12 @@
+use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops;
 
+use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
 pub type Decimal = rust_decimal::Decimal;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OptionType {
@@ -34,7 +37,7 @@ pub enum FeeSide {
     Give,
     Base,
     Quote,
-    Other
+    Other,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,25 +49,14 @@ pub enum MarketFee {
 }
 
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
-    /// string literal for referencing within an exchange
-    pub id: String,
-
-    /// uppercase string literal of a pair of currencies
-    pub symbol: String,
-
     /// uppercase string, unified base currency code, 3 or more letters
     pub base: String,
 
     /// uppercase string, unified quote currency code, 3 or more letters
     pub quote: String,
-
-    /// any string, exchange-specific base currency id
-    pub base_id: String,
-
-    /// any string, exchange-specific quote currency id
-    pub quote_id: String,
 
     /// boolean, market status
     pub active: bool,
@@ -76,10 +68,6 @@ pub struct Market {
     /// the unified currency code that the contract will settle in, only set if `market_type` is a
     /// future, a swap or an option
     pub settle: Option<String>,
-
-    /// the currencyId of that the contract will settle in, only set if `market_type` is a future, a
-    /// swap or an option.
-    pub settle_id: Option<String>,
 
     /// the size of one contract, only used if `market_type` is a future, a swap or an option.
     pub contract_size: Option<Decimal>,
@@ -119,12 +107,42 @@ pub struct Market {
     pub limit: Option<MarketLimit>,
 }
 
+impl Display for Market {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.base, self.quote)
+    }
+}
+
 impl Hash for Market {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.base.hash(state);
         self.quote.hash(state);
         self.market_type.hash(state);
         self.expiry.hash(state);
+    }
+}
+
+impl Default for Market {
+    fn default() -> Self {
+        Market {
+            base: "".to_string(),
+            quote: "".to_string(),
+            active: false,
+            market_type: MarketType::Unknown,
+            settle: None,
+            contract_size: None,
+            contract_type: None,
+            expiry: None,
+            expiry_datetime: "".to_string(),
+            strike: None,
+            option_type: None,
+            fee: None,
+            fee_currency: None,
+            fee_currency_id: None,
+            fee_side: None,
+            precision: None,
+            limit: None,
+        }
     }
 }
 
@@ -165,10 +183,6 @@ pub struct MarketLimit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Currency {
-    /// The string ID of the currency within the exchange. Currency ids are used inside
-    /// exchanges internally to identify coins during the request/response process.
-    pub id: String,
-
     /// An uppercase string code representation of a particular currency. Currency codes are used
     /// to reference currencies within the ccxtr library.
     pub code: String,
@@ -213,10 +227,6 @@ pub struct CurrencyLimit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Network {
-    /// The string ID of the network within the exchange. Network ids are used inside
-    /// exchanges internally to identify networks during the request/response process.
-    pub id: String,
-
     /// An uppercase string representation of a particular network. Networks are used to reference
     /// networks within the ccxtr library.
     pub network: String,
@@ -249,10 +259,11 @@ pub struct Network {
 
 
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
     ///  The string ID of the network within the exchange.
-    pub id: String,
+    pub id: Option<String>,
 
     ///  a user-defined clientOrderId, if any
     pub client_order_id: Option<String>,
@@ -269,8 +280,8 @@ pub struct Order {
     /// 'open', 'closed', 'canceled', 'expired', 'rejected'
     pub status: OrderStatus,
 
-    /// symbol
-    pub symbol: String,
+    /// market
+    pub market: Market,
 
     /// 'market', 'limit', 'market by', 'trigger', 'stop loss', 'take profit',
     pub order_type: OrderType,
@@ -305,6 +316,32 @@ pub struct Order {
     /// fee info, if available
     pub fee: Option<OrderFee>,
 }
+impl Default for Order {
+    fn default() -> Self {
+        let timestamp = Utc::now().timestamp_millis();
+        let date_time = Utc.timestamp_millis_opt(timestamp).unwrap().to_rfc3339();
+        Self {
+            id: None,
+            client_order_id: None,
+            datetime: date_time,
+            timestamp,
+            last_trade_timestamp: None,
+            status: OrderStatus::Open,
+            market: Market::default(),
+            order_type: OrderType::default(),
+            time_in_force: None,
+            side: OrderSide::Buy,
+            price: None,
+            amount: Decimal::default(),
+            cost: None,
+            average: None,
+            filled: None,
+            remaining: None,
+            fee: None,
+            trades: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trade {
@@ -317,8 +354,8 @@ pub struct Trade {
     /// ISO8601 datetime with milliseconds
     pub datetime: String,
 
-    /// symbol
-    pub symbol: String,
+    /// market
+    pub market: Market,
 
     /// string order id or None
     pub order_id: Option<String>,
@@ -366,6 +403,33 @@ pub enum OrderSide {
     Buy,
     Sell,
 }
+
+impl OrderSide {
+    pub fn opposite(&self) -> Self {
+        match self {
+            OrderSide::Buy => OrderSide::Sell,
+            OrderSide::Sell => OrderSide::Buy,
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "buy" | "BUY" => Some(OrderSide::Buy),
+            "sell" | "SELL" => Some(OrderSide::Sell),
+            _ => None,
+        }
+    }
+}
+
+impl Into<String> for OrderSide {
+    fn into(self) -> String {
+        match self {
+            OrderSide::Buy => "buy".to_string(),
+            OrderSide::Sell => "sell".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TimeInForce {
     /// Good Till Cancel(ed), the order stays on the orderbook until it is matched or canceled.
@@ -413,6 +477,25 @@ pub enum OrderType {
     TakeProfit,
 }
 
+impl Display for OrderType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            OrderType::Limit => write!(f, "LIMIT"),
+            OrderType::Market => write!(f, "MARKET"),
+            OrderType::MarketBuy => write!(f, "MARKET BUY"),
+            OrderType::Trigger => write!(f, "TRIGGER"),
+            OrderType::StopLoss => write!(f, "STOP LOSS"),
+            OrderType::TakeProfit => write!(f, "TAKE PROFIT"),
+        }
+    }
+}
+
+impl Default for OrderType {
+    fn default() -> Self {
+        OrderType::Limit
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OrderStatus {
     Open,
@@ -420,6 +503,7 @@ pub enum OrderStatus {
     Canceled,
     Expired,
     Rejected,
+    Unknown,
 }
 
 
@@ -427,21 +511,21 @@ pub enum OrderStatus {
 pub struct OrderBook {
     pub bids: Vec<OrderBookUnit>,
     pub asks: Vec<OrderBookUnit>,
-    pub symbol: String,
+    pub market: Market,
     pub timestamp: i64,
     pub datetime: String,
-    pub nonce: Option<i64>
+    pub nonce: Option<i64>,
 }
 
 impl OrderBook {
-    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, symbol: String, timestamp: i64, datetime: String, nonce: Option<i64>) -> Self {
-        Self{
+    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, market: Market, timestamp: i64, datetime: String, nonce: Option<i64>) -> Self {
+        Self {
             bids,
             asks,
-            symbol,
+            market,
             timestamp,
             datetime,
-            nonce
+            nonce,
         }
     }
 }
@@ -458,3 +542,5 @@ pub struct OrderBookUnit {
     pub price: Decimal,
     pub amount: Decimal,
 }
+
+

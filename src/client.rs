@@ -12,7 +12,8 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::{Error, Result};
 
-pub const NONE: Option<&'static ()> = None;
+pub const EMPTY_QUERY: Option<&'static ()> = None;
+pub const EMPTY_BODY: Option<&String> = None;
 
 
 type ReceiveStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
@@ -89,18 +90,43 @@ pub struct HttpClient {
     host: String,
     port: u16,
     client: reqwest::Client,
+    error_parser: fn(message: String) -> Error,
 }
 
 impl HttpClient {
-    pub async fn get<Q: Serialize, T: DeserializeOwned + Debug>(&self, endpoint: &str, query: Option<&Q>) -> Result<T> {
+    /// query: `&[("foo", "a"), ("foo", "b")])` makes `"foo=a&foo=b"`
+    pub async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, query: Option<&Q>) -> Result<T> {
         let mut builder = self.client.get(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);
         }
         let response = builder.send().await?;
         let code = response.status();
-        if code.as_u16() < 200 || code.as_u16() >= 300 {
-            return Err(Error::HttpError(response.text().await?));
+        if !code.is_success() {
+            return Err((self.error_parser)(response.text().await?));
+        }
+        Ok(response.json::<T>().await?)
+    }
+
+    pub async fn post<Q: Serialize + ?Sized, B: AsRef<str>, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>, body: Option<&B>) -> Result<T> {
+        let mut builder = self.client.post(format!("{}:{}{}", self.host, self.port, endpoint));
+        if let Some(query) = query {
+            builder = builder.query(query);
+        }
+
+        if headers.is_some() {
+            for (k, v) in headers.unwrap() {
+                builder = builder.header(k, v);
+            }
+        }
+
+        if let Some(body) = body {
+            builder = builder.body(body.as_ref().to_owned());
+        }
+        let response = builder.send().await?;
+        let code = response.status();
+        if !code.is_success() {
+            return Err((self.error_parser)(response.text().await?));
         }
         Ok(response.json::<T>().await?)
     }
@@ -110,6 +136,7 @@ impl HttpClient {
 pub struct HttpClientBuilder {
     host: String,
     port: u16,
+    error_parser: Option<fn(message: String) -> Error>,
 }
 
 impl HttpClientBuilder {
@@ -117,6 +144,7 @@ impl HttpClientBuilder {
         Self {
             host: "".to_string(),
             port: 0,
+            error_parser: None,
         }
     }
 
@@ -130,12 +158,18 @@ impl HttpClientBuilder {
         self
     }
 
+    pub fn error_parser(mut self, handler: Option<fn(message: String) -> Error>) -> Self {
+        self.error_parser = handler;
+        self
+    }
+
     pub fn build(self) -> Result<HttpClient> {
         let result = reqwest::Client::builder().build();
         Ok(HttpClient {
             client: result?,
             host: self.host,
             port: self.port,
+            error_parser: self.error_parser.unwrap_or(|x| Error::HttpError(x))
         })
     }
 }
@@ -146,6 +180,7 @@ mod test {
     use futures::prelude::*;
 
     use crate::client::WsClient;
+    use crate::Error;
 
     #[tokio::test]
     async fn test_ws_client() {
@@ -161,5 +196,17 @@ mod test {
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
         let msg = receiver.as_mut().unwrap().next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
+    }
+
+
+
+    #[tokio::test]
+    async fn test_post() {
+        let client = crate::client::HttpClientBuilder::new()
+            .host("http://localhost".to_string())
+            .port(3246)
+            .build().unwrap();
+        let result: Result<String, Error> = client.post("/test", crate::client::EMPTY_QUERY, crate::client::EMPTY_BODY).await;
+        println!("{:?}", result);
     }
 }
