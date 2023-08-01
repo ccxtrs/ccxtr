@@ -1,18 +1,20 @@
 use std::fmt::Debug;
+
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use chrono::LocalResult::Single;
-use futures::SinkExt;
 use futures::channel::mpsc::Receiver;
+use futures::SinkExt;
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
-use crate::{Error, exchange::{Exchange, Properties}, model::{Market, MarketType}, PropertiesBuilder, Result};
-use crate::client::{EMPTY_BODY, EMPTY_QUERY};
+use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
+use crate::client::EMPTY_QUERY;
+use crate::error::{CreateOrderError, Error, Result, LoadMarketResult, OrderBookError, WatchError};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
-use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, TimeInForce};
+use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::into_precision;
 
@@ -67,9 +69,9 @@ impl From<Vec<u8>> for WatchOrderBookResponse {
 }
 
 impl TryFrom<&[String; 2]> for OrderBookUnit {
-    type Error = Error;
+    type Error = OrderBookError;
 
-    fn try_from(value: &[String; 2]) -> Result<Self> {
+    fn try_from(value: &[String; 2]) -> OrderBookResult<Self> {
         Ok(OrderBookUnit {
             price: value[0].parse::<f64>()?,
             amount: value[1].parse::<f64>()?,
@@ -84,7 +86,7 @@ struct ErrorResponse {
 }
 
 impl BinanceUsdm {
-    pub fn new(props: Properties) -> Result<Self> {
+    pub fn new(props: Properties) -> CommonResult<Self> {
         let common_props = PropertiesBuilder::new()
             .host(props.host.unwrap_or_else(|| "https://fapi.binance.com".into()))
             .port(props.port.unwrap_or(443))
@@ -111,19 +113,19 @@ impl BinanceUsdm {
                         let resp = WatchOrderBookResponse::from(message);
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
-                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Unknown market {}", resp.symbol),
                             ))));
                         }
-                        let bids = resp.bids.iter().map(|b| b.try_into()).collect::<Result<Vec<OrderBookUnit>>>();
+                        let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
-                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid bid {:?}", resp.bids),
                             ))));
                         }
-                        let asks = resp.asks.iter().map(|b| b.try_into()).collect::<Result<Vec<OrderBookUnit>>>();
+                        let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
-                            return Some(StreamItem::OrderBook(Err(Error::InvalidOrderBook(
+                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid ask {:?}", resp.asks),
                             ))));
                         }
@@ -150,28 +152,28 @@ impl BinanceUsdm {
 
     fn auth(&self, request: &String) -> Result<String> {
         if self.api_key.is_none() || self.secret.is_none() {
-            return Err(Error::MissingCredentials);
+            return Err(Error::InvalidCredentials);
         }
         let mut signed_key = Hmac::<Sha256>::new_from_slice(self.secret.clone().unwrap().as_bytes())?;
         signed_key.update(request.as_bytes());
         Ok(hex::encode(signed_key.finalize().into_bytes()))
     }
 
-    pub async fn connect(&mut self) -> Result<()> {
-        self.exchange_base.connect().await
+    pub async fn connect(&mut self) -> CommonResult<()> {
+        Ok(self.exchange_base.connect().await?)
     }
 }
 
 #[async_trait]
 impl Exchange for BinanceUsdm {
-    async fn load_markets(&mut self) -> Result<&Vec<Market>> {
+    async fn load_markets(&mut self) -> LoadMarketResult<&Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
             self.fetch_markets().await?;
         }
         Ok(&self.exchange_base.markets)
     }
 
-    async fn fetch_markets(&mut self) -> Result<&Vec<Market>> {
+    async fn fetch_markets(&mut self) -> FetchMarketResult<&Vec<Market>> {
         let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
         self.exchange_base.unifier.reset();
         let mut markets = vec![];
@@ -188,7 +190,7 @@ impl Exchange for BinanceUsdm {
         Ok(&self.exchange_base.markets)
     }
 
-    async fn watch_order_book(&mut self, markets: &Vec<Market>) -> Result<Receiver<Result<OrderBook>>> {
+    async fn watch_order_book(&mut self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
         let mut sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
@@ -196,7 +198,7 @@ impl Exchange for BinanceUsdm {
         for m in markets {
             match self.exchange_base.unifier.get_symbol_id(&m) {
                 Some(symbol_id) => symbol_ids.push(symbol_id),
-                None => return Err(Error::SymbolNotFound(format!("{:?}", m))),
+                None => return Err(WatchError::SymbolNotFound(format!("{:?}", m))),
             }
         }
         let params = symbol_ids.iter()
@@ -207,24 +209,26 @@ impl Exchange for BinanceUsdm {
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
         sender.send(stream_name).await?;
 
-        self.exchange_base.order_book_stream.take()
-            .ok_or(Error::WebsocketError("no receiver".into()))
+        Ok(self.exchange_base.order_book_stream.take()
+            .ok_or(Error::WebsocketError("no receiver".into()))?)
     }
 
-    async fn create_order(&self, request: Order) -> Result<Order> {
-        if request.price.is_none() {
-            return Err(Error::MissingPrice);
+    async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {
+        if request.price.is_none() && request.order_type == OrderType::Limit {
+            return Err(Error::InvalidPrice("price is required for limit orders".into()).into());
         }
         let symbol_id = self.exchange_base.unifier.get_symbol_id(&request.market).ok_or(Error::SymbolNotFound(format!("{}", request.market)))?;
         let timestamp = Utc::now().timestamp_millis();
-        let params = format!("symbol={}&side={}&type={}&quantity={}&price={}&timeInForce={}&recvWindow=5000&timestamp={}",
+        let mut params = format!("symbol={}&side={}&type={}&quantity={}&timeInForce={}&recvWindow=5000&timestamp={}",
                              symbol_id,
                              util::get_exchange_order_side(&request.side),
                              util::get_exchange_order_type(&request.order_type)?,
                              request.amount,
-                             request.price.unwrap(),
-                             util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC))?,
+                             util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC)),
                              timestamp);
+        if request.price.is_some() {
+            params = format!("{}&price={}", params, request.price.unwrap());
+        }
         let signature = self.auth(&params)?;
         let params = format!("{}&signature={}", params, signature);
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
@@ -272,7 +276,7 @@ impl TryFrom<CreateOrderResponse> for Order {
         let order_status = util::get_unified_order_status(&resp.status)?;
         let amount = resp.orig_qty.parse()?;
         let remaining = match order_status {
-            OrderStatus::Open =>  Some(amount),
+            OrderStatus::Open => Some(amount),
             _ => None,
         };
         Ok(Order {
@@ -291,7 +295,6 @@ impl TryFrom<CreateOrderResponse> for Order {
         })
     }
 }
-
 
 
 #[derive(Serialize)]

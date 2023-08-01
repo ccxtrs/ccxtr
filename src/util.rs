@@ -1,5 +1,5 @@
 use std::ops::Neg;
-use crate::Result;
+use crate::error::Result;
 use std::str::FromStr;
 
 pub(in crate) fn into_precision(s: String) -> Result<isize> {

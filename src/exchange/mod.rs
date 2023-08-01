@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures::channel::mpsc;
+use futures::channel::mpsc::Receiver;
 use futures::StreamExt;
 
 pub use binance::BinanceUsdm;
@@ -9,9 +10,9 @@ pub(in self) use property::Properties;
 pub use property::PropertiesBuilder;
 
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::error::Error;
+use crate::error::{CommonError, CreateOrderError, Error, Result, LoadMarketError, LoadMarketResult, WatchError, CommonResult, CreateOrderResult, OrderBookResult, WatchResult};
+use crate::{FetchMarketError, FetchMarketResult};
 use crate::model::{Currency, Market, Order, OrderBook, Trade};
-use crate::Result;
 
 mod binance;
 mod property;
@@ -51,7 +52,7 @@ impl Unifier {
 }
 
 pub enum StreamItem {
-    OrderBook(Result<OrderBook>),
+    OrderBook(OrderBookResult<OrderBook>),
 }
 
 pub struct ExchangeBase {
@@ -60,8 +61,8 @@ pub struct ExchangeBase {
 
     stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>,
 
-    order_book_stream_sender: mpsc::Sender<Result<OrderBook>>,
-    order_book_stream: Option<mpsc::Receiver<Result<OrderBook>>>,
+    order_book_stream_sender: mpsc::Sender<OrderBookResult<OrderBook>>,
+    order_book_stream: Option<mpsc::Receiver<OrderBookResult<OrderBook>>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -73,7 +74,7 @@ const MAX_CAPACITY: usize = !(OPEN_MASK);
 const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
 
 impl ExchangeBase {
-    pub fn new(properties: Properties) -> Result<Self> {
+    pub(crate) fn new(properties: Properties) -> Result<Self> {
         if properties.host.is_none() {
             return Err(Error::MissingProperties("host".into()));
         }
@@ -89,7 +90,7 @@ impl ExchangeBase {
             .error_parser(properties.error_parser)
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
-        let (order_book_stream_sender, order_book_stream) = mpsc::channel::<Result<OrderBook>>(MAX_BUFFER);
+        let (order_book_stream_sender, order_book_stream) = mpsc::channel::<OrderBookResult<OrderBook>>(MAX_BUFFER);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
@@ -101,7 +102,7 @@ impl ExchangeBase {
         })
     }
 
-    pub async fn connect(&mut self) -> Result<()> {
+    async fn connect(&mut self) -> Result<()> {
         if self.markets.is_empty() {
             return Err(Error::MissingMarkets);
         }
@@ -136,104 +137,99 @@ impl ExchangeBase {
     }
 }
 
-impl From<mpsc::SendError> for Error {
-    fn from(e: mpsc::SendError) -> Self {
-        Error::WebsocketError(format!("{}", e))
-    }
-}
 
 #[async_trait]
 pub trait Exchange {
     // public
-    async fn load_markets(&mut self) -> Result<&Vec<Market>> {
-        Err(Error::NotImplemented)
+    async fn load_markets(&mut self) -> LoadMarketResult<&Vec<Market>> {
+        Err(LoadMarketError::NotImplemented)
     }
-    async fn fetch_markets(&mut self) -> Result<&Vec<Market>> {
-        Err(Error::NotImplemented)
+    async fn fetch_markets(&mut self) -> FetchMarketResult<&Vec<Market>> {
+        Err(FetchMarketError::NotImplemented)
     }
-    async fn fetch_currencies(&self) -> Result<Vec<Currency>> {
-        Err(Error::NotImplemented)
+    async fn fetch_currencies(&self) -> CommonResult<Vec<Currency>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_ticker(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn fetch_ticker(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_tickers(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn fetch_tickers(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_order_book(&self) -> Result<Vec<OrderBook>> {
-        Err(Error::NotImplemented)
+    async fn fetch_order_book(&self) -> CommonResult<Vec<OrderBook>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_ohlcv(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn fetch_ohlcv(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_status(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn fetch_status(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_trades(&self) -> Result<Vec<Trade>> {
-        Err(Error::NotImplemented)
+    async fn fetch_trades(&self) -> CommonResult<Vec<Trade>> {
+        Err(CommonError::NotImplemented)
     }
 
-    async fn watch_ticker(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_ticker(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn watch_tickers(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_tickers(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&mut self, _: &Vec<Market>) -> Result<mpsc::Receiver<Result<OrderBook>>> {
-        Err(Error::NotImplemented)
+    async fn watch_order_book(&mut self, _: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_ohlcv(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_ohlcv(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_status(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_status(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_trades(&self) -> Result<Result<mpsc::Receiver<Result<Trade>>>> {
-        Err(Error::NotImplemented)
+    async fn watch_trades(&self) -> WatchResult<Receiver<OrderBookResult<Trade>>> {
+        Err(WatchError::NotImplemented)
     }
 
     // private
-    async fn fetch_balance(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn fetch_balance(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn create_order(&self, _: Order) -> Result<Order> {
-        Err(Error::NotImplemented)
+    async fn create_order(&self, _: Order) -> CreateOrderResult<Order> {
+        Err(CreateOrderError::NotImplemented)
     }
-    async fn cancel_order(&self, _: Order) -> Result<Order> {
-        Err(Error::NotImplemented)
+    async fn cancel_order(&self, _: Order) -> CommonResult<Order> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_order(&self) -> Result<Order> {
-        Err(Error::NotImplemented)
+    async fn fetch_order(&self) -> CommonResult<Order> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_orders(&self) -> Result<Vec<Order>> {
-        Err(Error::NotImplemented)
+    async fn fetch_orders(&self) -> CommonResult<Vec<Order>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_open_orders(&self) -> Result<Vec<Order>> {
-        Err(Error::NotImplemented)
+    async fn fetch_open_orders(&self) -> CommonResult<Vec<Order>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_closed_orders(&self) -> Result<Vec<Order>> {
-        Err(Error::NotImplemented)
+    async fn fetch_closed_orders(&self) -> CommonResult<Vec<Order>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn fetch_my_trades(&self) -> Result<Vec<Trade>> {
-        Err(Error::NotImplemented)
+    async fn fetch_my_trades(&self) -> CommonResult<Vec<Trade>> {
+        Err(CommonError::NotImplemented)
     }
-    async fn deposit(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn deposit(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
-    async fn withdraw(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn withdraw(&self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
     }
 
-    async fn watch_balance(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_balance(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_my_trades(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_my_trades(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_orders(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_orders(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
-    async fn watch_positions(&self) -> Result<()> {
-        Err(Error::NotImplemented)
+    async fn watch_positions(&self) -> WatchResult<()> {
+        Err(WatchError::NotImplemented)
     }
 }

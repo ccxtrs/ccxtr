@@ -448,7 +448,7 @@ pub enum TimeInForce {
     PO,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OrderType {
     /// regular orders having an amount in base currency (how much you want to buy or sell) and a
     /// price in quote currency (for which price you want to buy or sell).

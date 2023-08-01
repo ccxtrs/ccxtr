@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::error::Error;
 use crate::exchange::{StreamItem, Unifier};
 
 #[derive(Debug)]
@@ -53,12 +53,12 @@ impl PropertiesBuilder {
         self
     }
 
-    pub fn stream_parser(mut self, stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>) -> Self {
+    pub(crate) fn stream_parser(mut self, stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>) -> Self {
         self.stream_parser = Some(stream_parser);
         self
     }
 
-    pub fn error_parser(mut self, error_parser: fn(String) -> Error) -> Self {
+    pub(crate) fn error_parser(mut self, error_parser: fn(String) -> Error) -> Self {
         self.error_parser = Some(error_parser);
         self
     }

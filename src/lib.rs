@@ -5,8 +5,14 @@ mod util;
 
 pub mod model;
 
-pub use error::Error;
-pub type Result<T> = std::result::Result<T, Error>;
+
+pub use crate::error::{FetchMarketResult, FetchMarketError};
+pub use crate::error::{LoadMarketResult, LoadMarketError};
+pub use crate::error::{CommonResult, CommonError};
+pub use crate::error::{WatchResult, WatchError};
+pub use crate::error::{OrderBookResult, OrderBookError};
+pub use crate::error::{CreateOrderResult, CreateOrderError};
+
 
 pub use exchange::Exchange;
 pub use exchange::BinanceUsdm;

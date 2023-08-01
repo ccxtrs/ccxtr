@@ -10,17 +10,17 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, tungstenite, WebSocketStream};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::{Error, Result};
+use crate::error::{Error, Result};
 
-pub const EMPTY_QUERY: Option<&'static ()> = None;
-pub const EMPTY_BODY: Option<&String> = None;
+pub(crate) const EMPTY_QUERY: Option<&'static ()> = None;
+pub(crate) const EMPTY_BODY: Option<&String> = None;
 
 
 type ReceiveStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 type MapFunc = fn(core::result::Result<Message, tungstenite::error::Error>) -> core::result::Result<Vec<u8>, Error>;
 type MappedReceiveStream = Map<ReceiveStream, MapFunc>;
 
-pub struct WsClient {
+pub(crate) struct WsClient {
     endpoint: String,
 
     sender: Option<Sender<String>>,
@@ -47,7 +47,7 @@ impl WsClient {
         }
     }
 
-    pub async fn connect(&mut self) -> Result<&Self> {
+    pub(crate) async fn connect(&mut self) -> Result<&Self> {
         let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
         let (mut tx, rx) = stream.split();
         let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(MAX_BUFFER);
@@ -70,11 +70,11 @@ impl WsClient {
         Ok(self)
     }
 
-    pub fn sender(&self) -> Option<Sender<String>> {
+    pub(crate) fn sender(&self) -> Option<Sender<String>> {
         self.sender.clone()
     }
 
-    pub fn receiver(&mut self) -> Option<MappedReceiveStream> {
+    pub(crate) fn receiver(&mut self) -> Option<MappedReceiveStream> {
         self.receiver.take()
     }
 }
@@ -95,7 +95,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// query: `&[("foo", "a"), ("foo", "b")])` makes `"foo=a&foo=b"`
-    pub async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, query: Option<&Q>) -> Result<T> {
+    pub(crate) async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, query: Option<&Q>) -> Result<T> {
         let mut builder = self.client.get(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);
@@ -108,7 +108,7 @@ impl HttpClient {
         Ok(response.json::<T>().await?)
     }
 
-    pub async fn post<Q: Serialize + ?Sized, B: AsRef<str>, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>, body: Option<&B>) -> Result<T> {
+    pub(crate) async fn post<Q: Serialize + ?Sized, B: AsRef<str>, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>, body: Option<&B>) -> Result<T> {
         let mut builder = self.client.post(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);
@@ -140,7 +140,7 @@ pub struct HttpClientBuilder {
 }
 
 impl HttpClientBuilder {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             host: "".to_string(),
             port: 0,
@@ -148,22 +148,22 @@ impl HttpClientBuilder {
         }
     }
 
-    pub fn host(mut self, host: String) -> Self {
+    pub(crate) fn host(mut self, host: String) -> Self {
         self.host = host;
         self
     }
 
-    pub fn port(mut self, port: u16) -> Self {
+    pub(crate) fn port(mut self, port: u16) -> Self {
         self.port = port;
         self
     }
 
-    pub fn error_parser(mut self, handler: Option<fn(message: String) -> Error>) -> Self {
+    pub(crate) fn error_parser(mut self, handler: Option<fn(message: String) -> Error>) -> Self {
         self.error_parser = handler;
         self
     }
 
-    pub fn build(self) -> Result<HttpClient> {
+    pub(crate) fn build(self) -> Result<HttpClient> {
         let result = reqwest::Client::builder().build();
         Ok(HttpClient {
             client: result?,
@@ -180,7 +180,6 @@ mod test {
     use futures::prelude::*;
 
     use crate::client::WsClient;
-    use crate::Error;
 
     #[tokio::test]
     async fn test_ws_client() {

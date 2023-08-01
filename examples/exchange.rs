@@ -1,9 +1,9 @@
+use std::error::Error;
 use std::thread::sleep;
 use ccxtr::{BinanceUsdm, PropertiesBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{Market, MarketType, Order, OrderSide, OrderType};
 use futures::StreamExt;
-use rust_decimal::prelude::FromPrimitive;
 
 #[tokio::main]
 async fn main() {
@@ -39,7 +39,7 @@ async fn main() {
         amount: 0.001,
         ..Default::default()
     };
-    let order = ex.create_order(order).await.or_else(|e| {
+    let _ = ex.create_order(order).await.or_else(|e| {
         println!("create order error: {:?}", e);
         Err(e)
     });
