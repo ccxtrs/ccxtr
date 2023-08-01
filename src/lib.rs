@@ -12,3 +12,5 @@ pub use exchange::Exchange;
 pub use exchange::BinanceUsdm;
 pub use exchange::PropertiesBuilder;
 
+pub use futures::StreamExt;
+
