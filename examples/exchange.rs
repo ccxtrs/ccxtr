@@ -27,7 +27,7 @@ async fn main() {
     let mut stream = ex.watch_order_book(&vec![btc_usdt.as_ref().unwrap().clone()]).await.unwrap();
     tokio::spawn(async move {
         while let Some(Ok(x)) = stream.next().await {
-            print!("ask1: ({:?}, {:?}) bid:1 ({:?}, {:?})\n", x.asks[0].price, x.asks[0].amount, x.bids[0].price, x.bids[0].amount);
+            print!("best ask: ({:?}, {:?}) best bid: ({:?}, {:?})\n", x.asks[0].price, x.asks[0].amount, x.bids[0].price, x.bids[0].amount);
         }
     });
 
