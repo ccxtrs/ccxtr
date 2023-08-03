@@ -44,8 +44,8 @@ impl BinanceUsdm {
                 }
             })
             .stream_parser(|message, unifier| {
-                let common_message = WatchCommonResponse::from(message.clone());
-                if common_message.result.is_some() {
+                let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
+                if common_message.result.is_some() { // subscription response
                     return None;
                 }
                 match common_message.event_type {
@@ -216,9 +216,11 @@ struct WatchCommonResponse {
     event_type: Option<String>,
 }
 
-impl From<Vec<u8>> for WatchCommonResponse {
-    fn from(message: Vec<u8>) -> Self {
-        serde_json::from_slice(&message).unwrap()
+impl TryFrom<Vec<u8>> for WatchCommonResponse {
+    type Error = Error;
+
+    fn try_from(message: Vec<u8>) -> Result<Self> {
+        serde_json::from_slice(&message).map_err(|e| Error::WebsocketError(e.to_string()))
     }
 }
 
