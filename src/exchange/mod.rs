@@ -6,7 +6,8 @@ use futures::channel::mpsc::Receiver;
 use futures::StreamExt;
 
 pub use binance::BinanceUsdm;
-pub(in self) use property::Properties;
+pub use binance::BinanceMargin;
+use property::Properties;
 pub use property::PropertiesBuilder;
 
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};

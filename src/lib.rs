@@ -16,6 +16,7 @@ pub use crate::error::{CreateOrderResult, CreateOrderError};
 
 pub use exchange::Exchange;
 pub use exchange::BinanceUsdm;
+pub use exchange::BinanceMargin;
 pub use exchange::PropertiesBuilder;
 
 pub use futures::StreamExt;

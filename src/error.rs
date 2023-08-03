@@ -7,7 +7,7 @@ use thiserror::Error;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Error {
     NotImplemented,
     DeserializeJsonBody(String),
@@ -18,7 +18,11 @@ pub(crate) enum Error {
     MissingProperties(String),
     SymbolNotFound(String),
     InvalidPrice(String),
+    InvalidMarket,
+    InvalidQuantity(String),
     InvalidCredentials,
+    InvalidParameters(String),
+    InvalidSignature(String),
     MissingMarkets,
 
     UnsupportedOrderType(String),
@@ -96,6 +100,8 @@ pub enum CommonError {
     InsufficientMargin(String),
     #[error("invalid price {0}")]
     InvalidPrice(String),
+    #[error("invalid market")]
+    InvalidMarket,
 }
 
 impl From<Error> for CommonError {
@@ -119,6 +125,10 @@ impl From<Error> for CommonError {
             Error::InvalidOrderBook(e) => CommonError::InvalidOrderBook(e),
             Error::InsufficientMargin(e) => CommonError::InsufficientMargin(e),
             Error::InvalidPrice(e) => CommonError::InvalidPrice(e),
+            Error::InvalidQuantity(e) => CommonError::InvalidPrice(e),
+            Error::InvalidSignature(e) => CommonError::InvalidPrice(e),
+            Error::InvalidParameters(e) => CommonError::InvalidPrice(e),
+            Error::InvalidMarket => CommonError::InvalidMarket,
         }
     }
 }

@@ -4,6 +4,7 @@ use std::ops;
 
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use crate::{OrderBookError, OrderBookResult};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +78,7 @@ pub struct Market {
     pub expiry: Option<i64>,
 
     /// The datetime contract will in iso8601 format
-    pub expiry_datetime: String,
+    pub expiry_datetime: Option<String>,
 
     /// price at which a put or call option can be exercised
     pub strike: Option<f64>,
@@ -131,7 +132,7 @@ impl Default for Market {
             contract_size: None,
             contract_type: None,
             expiry: None,
-            expiry_datetime: "".to_string(),
+            expiry_datetime: None,
             strike: None,
             option_type: None,
             fee: None,
@@ -510,13 +511,13 @@ pub struct OrderBook {
     pub bids: Vec<OrderBookUnit>,
     pub asks: Vec<OrderBookUnit>,
     pub market: Market,
-    pub timestamp: i64,
-    pub datetime: String,
+    pub timestamp: Option<i64>,
+    pub datetime: Option<String>,
     pub nonce: Option<i64>,
 }
 
 impl OrderBook {
-    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, market: Market, timestamp: i64, datetime: String, nonce: Option<i64>) -> Self {
+    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, market: Market, timestamp: Option<i64>, datetime: Option<String>, nonce: Option<i64>) -> Self {
         Self {
             bids,
             asks,
@@ -541,4 +542,13 @@ pub struct OrderBookUnit {
     pub amount: f64,
 }
 
+impl TryFrom<&[String; 2]> for OrderBookUnit {
+    type Error = OrderBookError;
 
+    fn try_from(value: &[String; 2]) -> OrderBookResult<Self> {
+        Ok(OrderBookUnit {
+            price: value[0].parse::<f64>()?,
+            amount: value[1].parse::<f64>()?,
+        })
+    }
+}
