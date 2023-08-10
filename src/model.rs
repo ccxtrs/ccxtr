@@ -512,19 +512,29 @@ pub struct OrderBook {
     pub asks: Vec<OrderBookUnit>,
     pub market: Market,
     pub timestamp: Option<i64>,
-    pub datetime: Option<String>,
-    pub nonce: Option<i64>,
+    pub last_update_id: Option<i64>,
+}
+
+impl Default for OrderBook {
+    fn default() -> Self {
+        Self {
+            bids: Vec::new(),
+            asks: Vec::new(),
+            market: Market::default(),
+            timestamp: None,
+            last_update_id: None,
+        }
+    }
 }
 
 impl OrderBook {
-    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, market: Market, timestamp: Option<i64>, datetime: Option<String>, nonce: Option<i64>) -> Self {
+    pub fn new(bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, market: Market, timestamp: Option<i64>, last_update_id: Option<i64>) -> Self {
         Self {
             bids,
             asks,
             market,
             timestamp,
-            datetime,
-            nonce,
+            last_update_id,
         }
     }
 }
@@ -539,7 +549,13 @@ impl From<String> for OrderBook {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderBookUnit {
     pub price: f64,
-    pub amount: f64,
+    pub quantity: f64,
+}
+
+impl Into<(f64, f64)> for OrderBookUnit {
+    fn into(self) -> (f64, f64) {
+        (self.price, self.quantity)
+    }
 }
 
 impl TryFrom<&[String; 2]> for OrderBookUnit {
@@ -548,7 +564,7 @@ impl TryFrom<&[String; 2]> for OrderBookUnit {
     fn try_from(value: &[String; 2]) -> OrderBookResult<Self> {
         Ok(OrderBookUnit {
             price: value[0].parse::<f64>()?,
-            amount: value[1].parse::<f64>()?,
+            quantity: value[1].parse::<f64>()?,
         })
     }
 }

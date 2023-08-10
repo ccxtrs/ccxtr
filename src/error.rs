@@ -1,4 +1,5 @@
 use std::num::ParseFloatError;
+use std::sync::PoisonError;
 
 use futures::channel::mpsc;
 use hmac::digest::InvalidLength;
@@ -10,6 +11,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, PartialEq)]
 pub(crate) enum Error {
     NotImplemented,
+    LockError(String),
     DeserializeJsonBody(String),
     HttpError(String),
     WebsocketError(String),
@@ -56,12 +58,21 @@ impl From<InvalidLength> for Error {
 }
 
 
+impl<T> From<PoisonError<T>> for Error {
+    fn from(value: PoisonError<T>) -> Self {
+        Error::LockError(format!("{:?}", value))
+    }
+}
+
+
 pub type CommonResult<T> = std::result::Result<T, CommonError>;
 
 #[derive(Error, Debug)]
 pub enum CommonError {
     #[error("not implemented")]
     NotImplemented,
+    #[error("lock error {0}")]
+    LockError(String),
     #[error("deserialization error for json body {0}")]
     DeserializeJsonBody(String),
     #[error("http error {0}")]
@@ -108,6 +119,7 @@ impl From<Error> for CommonError {
     fn from(err: Error) -> Self {
         match err {
             Error::NotImplemented => CommonError::NotImplemented,
+            Error::LockError(e) => CommonError::LockError(e),
             Error::DeserializeJsonBody(e) => CommonError::DeserializeJsonBody(e),
             Error::HttpError(e) => CommonError::HttpError(e),
             Error::WebsocketError(e) => CommonError::WebsocketError(e),

@@ -11,7 +11,7 @@ use sha2::Sha256;
 
 use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
 use crate::client::EMPTY_QUERY;
-use crate::error::{CreateOrderError, Error, Result, LoadMarketResult, OrderBookError, WatchError};
+use crate::error::{Error, LoadMarketResult, OrderBookError, Result, WatchError};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
@@ -32,18 +32,22 @@ impl BinanceUsdm {
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://fstream.binance.com/ws")
             .error_parser(|message| {
-                let error: ErrorResponse = serde_json::from_str(&message).unwrap();
-                match error.code {
-                    -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
-                    -1013 => Error::InvalidQuantity(error.msg), // Invalid quantity
-                    -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
-                    -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
-                    -1100 => Error::InvalidParameters(error.msg), // Illegal characters found in a parameter
-                    -1101 => Error::InvalidParameters(error.msg), // Too many parameters sent for this endpoint
-                    _ => Error::HttpError(error.msg),
+                match serde_json::from_str::<ErrorResponse>(&message) {
+                    Ok(error) => {
+                        match error.code {
+                            -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
+                            -1013 => Error::InvalidQuantity(error.msg), // Invalid quantity
+                            -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
+                            -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
+                            -1100 => Error::InvalidParameters(error.msg), // Illegal characters found in a parameter
+                            -1101 => Error::InvalidParameters(error.msg), // Too many parameters sent for this endpoint
+                            _ => Error::HttpError(error.msg),
+                        }
+                    }
+                    Err(_) => Error::DeserializeJsonBody(message),
                 }
             })
-            .stream_parser(|message, unifier| {
+            .stream_parser(|message, unifier, order_book_sync| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription response
                     return None;
@@ -74,7 +78,6 @@ impl BinanceUsdm {
                             asks.unwrap(),
                             market.unwrap(),
                             Some(resp.event_time),
-                            Some(Utc.timestamp_millis_opt(resp.event_time).unwrap().to_rfc3339()),
                             None,
                         );
                         Some(StreamItem::OrderBook(Ok(book)))
@@ -316,7 +319,7 @@ impl TryInto<Vec<Market>> for FetchMarketsResponse {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RateLimit{
+struct RateLimit {
     pub interval: String,
     pub interval_num: i64,
     pub limit: i64,

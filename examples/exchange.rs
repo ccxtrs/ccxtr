@@ -33,17 +33,18 @@ async fn main() {
         }
     });
 
-    let order = Order {
-        market: btc_usdt.unwrap().clone(),
-        order_type: OrderType::Limit,
-        side: OrderSide::Buy,
-        price: Some(20000_f64),
-        amount: 0.001,
-        ..Default::default()
-    };
-    let _ = ex.create_order(order).await.or_else(|e| {
-        println!("create order error: {:?}", e);
-        Err(e)
-    });
-    sleep(std::time::Duration::from_secs(10));
+    // let order = Order {
+    //     market: btc_usdt.unwrap().clone(),
+    //     order_type: OrderType::Limit,
+    //     side: OrderSide::Buy,
+    //     price: Some(20000_f64),
+    //     amount: 0.001,
+    //     ..Default::default()
+    // };
+    // let _ = ex.create_order(order).await.or_else(|e| {
+    //     println!("create order error: {:?}", e);
+    //     Err(e)
+    // });
+    sleep(std::time::Duration::from_secs(100));
+
 }

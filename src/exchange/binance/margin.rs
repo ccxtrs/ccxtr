@@ -33,12 +33,22 @@ impl BinanceMargin {
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://stream.binance.com:9443/ws")
             .error_parser(|message| {
-                let error: ErrorResponse = serde_json::from_str(&message).unwrap();
-                match error.code {
-                    _ => Error::HttpError(error.msg),
+                match serde_json::from_str::<ErrorResponse>(&message) {
+                    Ok(error) => {
+                        match error.code {
+                            -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
+                            -1013 => Error::InvalidQuantity(error.msg), // Invalid quantity
+                            -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
+                            -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
+                            -1100 => Error::InvalidParameters(error.msg), // Illegal characters found in a parameter
+                            -1101 => Error::InvalidParameters(error.msg), // Too many parameters sent for this endpoint
+                            _ => Error::HttpError(error.msg),
+                        }
+                    }
+                    Err(_) => Error::DeserializeJsonBody(message),
                 }
             })
-            .stream_parser(|message, unifier| {
+            .stream_parser(|message, unifier, synchronizer| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription result
                     return None;
@@ -68,7 +78,6 @@ impl BinanceMargin {
                             bids.unwrap(),
                             asks.unwrap(),
                             market.unwrap(),
-                            None,
                             None,
                             None,
                         );
