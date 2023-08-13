@@ -1,3 +1,4 @@
+use std::sync::{Arc, atomic};
 use std::thread::sleep;
 
 use futures::StreamExt;
@@ -26,28 +27,66 @@ async fn main() {
     }
     // subscriptions = subscriptions[0..30].to_vec();
     println!("subscriptions: {:?}", subscriptions.len());
+    let selections = Arc::new(subscriptions[0..10].to_vec());
+    let mut select = Arc::new(atomic::AtomicI64::new(0));
     let mut stream = ex.watch_order_book(&subscriptions).await.unwrap();
-    tokio::spawn(async move {
-        println!("start watching order book");
-        let mut err_markets = vec![];
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(order_book) => {
-                    if err_markets.contains(&order_book.market) {
-                        println!("recovered: {:?}", order_book.market);
-                        err_markets.retain(|m| m != &order_book.market);
-                    }
-                },
-                Err(OrderBookError::InvalidOrderBook(_, m)) => {
-                    println!("invalid order book: {:?}", m);
-                    let market = m.unwrap();
-                    err_markets.push(market.clone());
-                    let _ = ex.watch_order_book(&vec![market.clone()]).await;
-                },
-                _ => {}
+    tokio::spawn({
+        let select = select.clone();
+        let selections = selections.clone();
+        async move {
+            println!("start watching order book");
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(order_book) => {
+                        if order_book.market == selections[select.load(atomic::Ordering::Relaxed) as usize] {
+                            println!("[{}] bid={:?}({:?}) ask={:?}({:?})",
+                                order_book.market,
+                                order_book.bids[0].price,
+                                order_book.bids[0].quantity,
+                                order_book.asks[0].price,
+                                order_book.asks[0].quantity,
+                            );
+                        }
+                    },
+                    Err(OrderBookError::InvalidOrderBook(_, m)) => {
+                        let market = m.unwrap();
+                        let _ = ex.watch_order_book(&vec![market.clone()]).await;
+                    },
+                    _ => {}
+                }
             }
         }
     });
+
+    loop {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        match input {
+            "q" => {
+                break;
+            },
+            "n" => {
+                let mut num = select.load(atomic::Ordering::Relaxed);
+                num += 1;
+                if num >= selections.len() as i64 {
+                    num = 0;
+                }
+                println!("select: {}", selections[num as usize]);
+                select.store(num, atomic::Ordering::Relaxed);
+            },
+            "p" => {
+                let mut num = select.load(atomic::Ordering::Relaxed);
+                num -= 1;
+                if num < 0 {
+                    num = selections.len() as i64 - 1;
+                }
+                println!("select: {}", selections[num as usize]);
+                select.store(num, atomic::Ordering::Relaxed);
+            },
+            _ => {}
+        }
+    }
 
     // let order = Order {
     //     market: btc_usdt.unwrap().clone(),
@@ -61,6 +100,5 @@ async fn main() {
     //     println!("create order error: {:?}", e);
     //     Err(e)
     // });
-    sleep(std::time::Duration::from_secs(100));
 
 }

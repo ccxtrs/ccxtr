@@ -12,6 +12,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, PartialEq)]
 pub(crate) enum Error {
     NotImplemented,
+    InvalidTimestamp(i64),
     LockError(String),
     DeserializeJsonBody(String),
     HttpError(String),
@@ -39,6 +40,12 @@ pub(crate) enum Error {
     InsufficientMargin(String),
 }
 
+
+impl From<Error> for std::fmt::Error {
+    fn from(value: Error) -> Self {
+        std::fmt::Error{}
+    }
+}
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
@@ -114,6 +121,9 @@ pub enum CommonError {
     InvalidPrice(String),
     #[error("invalid market")]
     InvalidMarket,
+
+    #[error("invalid timestamp {0}")]
+    InvalidTimestamp(i64),
 }
 
 impl From<Error> for CommonError {
@@ -142,6 +152,7 @@ impl From<Error> for CommonError {
             Error::InvalidSignature(e) => CommonError::InvalidPrice(e),
             Error::InvalidParameters(e) => CommonError::InvalidPrice(e),
             Error::InvalidMarket => CommonError::InvalidMarket,
+            Error::InvalidTimestamp(ts) => CommonError::InvalidTimestamp(ts),
         }
     }
 }

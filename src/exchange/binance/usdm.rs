@@ -2,7 +2,6 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use chrono::LocalResult::Single;
 use futures::channel::mpsc::Receiver;
 use futures::SinkExt;
 use hmac::{Hmac, Mac};
@@ -384,12 +383,6 @@ impl Into<Result<Market>> for &Symbol {
             _ => MarketType::Unknown,
         };
 
-        let delivery_date = self.delivery_date
-            .and_then(|ts| match Utc.timestamp_millis_opt(ts) {
-                Single(dt) => Some(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-                _ => None,
-            });
-
         let active = util::is_active(self.status.clone());
 
         let mut limit = MarketLimit {
@@ -438,7 +431,6 @@ impl Into<Result<Market>> for &Symbol {
             settle,
             contract_type: Some(ContractType::Linear),
             expiry: self.delivery_date,
-            expiry_datetime: delivery_date,
             precision: Some(precision),
             limit: Some(limit),
             ..Default::default()

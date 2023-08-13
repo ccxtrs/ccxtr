@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::Neg;
 use std::str::FromStr;
 use std::sync::Mutex;
+use chrono::{TimeZone, Utc};
 
 use collections::SortedMap;
 
@@ -63,6 +64,13 @@ impl OrderBookDiff {
     }
 }
 
+pub(crate) fn timestamp_format(ts: i64, format: &str) -> Result<String> {
+    match Utc.timestamp_millis_opt(ts) {
+        chrono::LocalResult::None => Err(Error::InvalidTimestamp(ts)),
+        chrono::LocalResult::Single(t) => Ok(t.format(format).to_string()),
+        chrono::LocalResult::Ambiguous(_, _) => Err(Error::InvalidTimestamp(ts)),
+    }
+}
 
 pub(crate) struct OrderBookAggregator {
     bids: SortedMap<String, (f64, f64)>,

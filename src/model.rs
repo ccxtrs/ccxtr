@@ -3,8 +3,10 @@ use std::hash::{Hash, Hasher};
 use std::ops;
 
 use chrono::{TimeZone, Utc};
+use chrono::LocalResult::Single;
 use serde::{Deserialize, Serialize};
 use crate::{OrderBookError, OrderBookResult};
+use crate::util::timestamp_format;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +29,19 @@ pub enum MarketType {
     Futures,
     Option,
     Unknown,
+}
+
+impl Display for MarketType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MarketType::Spot => write!(f, "SPOT"),
+            MarketType::Margin => write!(f, "MARGIN"),
+            MarketType::Swap => write!(f, "SWAP"),
+            MarketType::Futures => write!(f, "FUTURES"),
+            MarketType::Option => write!(f, "OPTION"),
+            MarketType::Unknown => write!(f, "UNKNOWN"),
+        }
+    }
 }
 
 
@@ -77,9 +92,6 @@ pub struct Market {
     /// the unix expiry timestamp in milliseconds, None for everything except future market type.
     pub expiry: Option<i64>,
 
-    /// The datetime contract will in iso8601 format
-    pub expiry_datetime: Option<String>,
-
     /// price at which a put or call option can be exercised
     pub strike: Option<f64>,
 
@@ -108,7 +120,12 @@ pub struct Market {
 
 impl Display for Market {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.base, self.quote)
+        write!(f, "{}/{}.{}", self.base, self.quote, self.market_type);
+        if self.expiry.is_some() {
+            let delivery = timestamp_format(self.expiry.unwrap(), "%Y%m%d")?;
+            write!(f, ".{}", delivery);
+        }
+        Ok(())
     }
 }
 
@@ -132,7 +149,6 @@ impl Default for Market {
             contract_size: None,
             contract_type: None,
             expiry: None,
-            expiry_datetime: None,
             strike: None,
             option_type: None,
             fee: None,
