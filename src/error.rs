@@ -4,6 +4,7 @@ use std::sync::PoisonError;
 use futures::channel::mpsc;
 use hmac::digest::InvalidLength;
 use thiserror::Error;
+use crate::model::Market;
 
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -155,7 +156,7 @@ pub enum OrderBookError {
     #[error("websocket error {0}")]
     WebsocketError(String),
     #[error("invalid order book {0}")]
-    InvalidOrderBook(String),
+    InvalidOrderBook(String, Option<Market>),
     #[error("parse error {0}")]
     ParseError(String),
     #[error("unknown error {0}")]

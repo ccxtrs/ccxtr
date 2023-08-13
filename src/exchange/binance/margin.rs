@@ -1,3 +1,4 @@
+use std::sync::mpsc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use futures::channel::mpsc::Receiver;
@@ -5,14 +6,15 @@ use futures::SinkExt;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+
 use crate::{CommonResult, Exchange, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, PropertiesBuilder, WatchError, WatchResult};
 use crate::client::EMPTY_QUERY;
 use crate::error::{Error, Result};
+use crate::exchange::{ExchangeBase, MAX_BUFFER, StreamItem};
 use crate::exchange::binance::util;
-use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::property::Properties;
 use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, Precision, Range};
-use crate::util::into_precision;
+use crate::util::{into_precision, OrderBookDiff};
 
 #[derive(Serialize, Deserialize)]
 struct ErrorResponse {
@@ -28,6 +30,7 @@ pub struct BinanceMargin {
 
 impl BinanceMargin {
     pub fn new(props: Properties) -> CommonResult<Self> {
+        let (tx, rx) = mpsc::channel::<Market>();
         let common_props = PropertiesBuilder::new()
             .host(props.host.unwrap_or_else(|| "https://api.binance.com".into()))
             .port(props.port.unwrap_or(443))
@@ -59,28 +62,35 @@ impl BinanceMargin {
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Unknown market {}", resp.symbol),
+                                format!("Unknown market. symbol={}", resp.symbol), None,
                             ))));
                         }
+                        let market = market.unwrap();
                         let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid bid {:?}", resp.bids),
+                                format!("Invalid bid. bid={:?}", resp.bids), Some(market),
                             ))));
                         }
                         let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid ask {:?}", resp.asks),
+                                format!("Invalid ask. ask={:?}", resp.asks), Some(market),
                             ))));
                         }
-                        let book = OrderBook::new(
-                            bids.unwrap(),
-                            asks.unwrap(),
-                            market.unwrap(),
-                            None,
-                            None,
-                        );
+
+                        let diff = OrderBookDiff::new(resp.first_update_id, resp.final_update_id, bids.unwrap(), asks.unwrap(), Some(resp.event_time));
+                        let result = synchronizer.read().unwrap().append_and_get(market.clone(), diff);
+                        if result.is_err() {
+                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                                format!("Invalid order book."), Some(market),
+                            ))));
+                        }
+                        let book = result.unwrap();
+                        if book.is_none() {
+                            return None;
+                        }
+                        let book = book.unwrap();
                         Some(StreamItem::OrderBook(Ok(book)))
                     }
                     _ => return None,
@@ -140,7 +150,7 @@ impl Exchange for BinanceMargin {
 
         let mut symbol_ids: Vec<String> = Vec::new();
         for m in markets {
-            match self.exchange_base.unifier.get_symbol_id(&m) {
+            match self.exchange_base.unifier.get_symbol_id(m) {
                 Some(symbol_id) => symbol_ids.push(symbol_id),
                 None => return Err(WatchError::SymbolNotFound(format!("{:?}", m))),
             }
@@ -153,11 +163,36 @@ impl Exchange for BinanceMargin {
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
         sender.send(stream_name).await?;
 
+        // todo check subscription result
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+
+        for m in markets.iter() {
+            let symbol = self.exchange_base.unifier.get_symbol_id(m).ok_or(Error::SymbolNotFound(m.to_string()))?;
+            let resp: GetOrderBookSnapshotResponse = self.exchange_base.http_client.get("/api/v3/depth", Some(&[("symbol", symbol), ("limit", "100".to_string())])).await?;
+            let order_book = OrderBook::new(
+                resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>().map_err(|_| WatchError::UnknownError(format!("{:?}", resp)))?,
+                resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>().map_err(|_| WatchError::UnknownError(format!("{:?}", resp)))?,
+                m.clone(),
+                None,
+                Some(resp.last_update_id),
+            );
+            self.exchange_base.order_book_synchronizer.read().unwrap().snapshot(m.clone(), order_book)?;
+        }
+
         Ok(self.exchange_base.order_book_stream.take()
             .ok_or(Error::WebsocketError("no receiver".into()))?)
     }
 }
 
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetOrderBookSnapshotResponse {
+    #[serde(rename = "lastUpdateId")]
+    pub last_update_id: i64,
+    pub bids: Vec<Vec<String>>,
+    pub asks: Vec<Vec<String>>,
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

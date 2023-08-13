@@ -2,7 +2,7 @@ use std::thread::sleep;
 
 use futures::StreamExt;
 
-use ccxtr::{BinanceMargin, PropertiesBuilder};
+use ccxtr::{BinanceMargin, OrderBookError, OrderBookResult, PropertiesBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{Market, MarketType, Order, OrderSide, OrderType};
 
@@ -15,21 +15,37 @@ async fn main() {
     ex.fetch_markets().await.unwrap();
     ex.connect().await.unwrap();
     let markets = ex.load_markets().await.unwrap();
-    let mut btc_usdt: Option<Market> = None;
+    let mut subscriptions = Vec::new();
     for m in markets {
         match m {
-            Market { ref base, ref quote, ref market_type, .. } if base == "BTC" && quote == "USDT" && *market_type == MarketType::Margin => {
-                btc_usdt = Some(m.clone());
-                break;
+            Market { ref base, ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
+                subscriptions.push(m.clone());
             }
             _ => (),
         }
     }
-    let mut stream = ex.watch_order_book(&vec![btc_usdt.as_ref().unwrap().clone()]).await.unwrap();
+    // subscriptions = subscriptions[0..30].to_vec();
+    println!("subscriptions: {:?}", subscriptions.len());
+    let mut stream = ex.watch_order_book(&subscriptions).await.unwrap();
     tokio::spawn(async move {
         println!("start watching order book");
-        while let Some(Ok(x)) = stream.next().await {
-            println!("order book: {:?}", x)
+        let mut err_markets = vec![];
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(order_book) => {
+                    if err_markets.contains(&order_book.market) {
+                        println!("recovered: {:?}", order_book.market);
+                        err_markets.retain(|m| m != &order_book.market);
+                    }
+                },
+                Err(OrderBookError::InvalidOrderBook(_, m)) => {
+                    println!("invalid order book: {:?}", m);
+                    let market = m.unwrap();
+                    err_markets.push(market.clone());
+                    let _ = ex.watch_order_book(&vec![market.clone()]).await;
+                },
+                _ => {}
+            }
         }
     });
 

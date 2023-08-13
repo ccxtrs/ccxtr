@@ -1,18 +1,19 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, atomic, RwLock};
+use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::StreamExt;
 
-pub use binance::BinanceUsdm;
 pub use binance::BinanceMargin;
+pub use binance::BinanceUsdm;
 use property::Properties;
 pub use property::PropertiesBuilder;
 
-use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::error::{CommonError, CreateOrderError, Error, Result, LoadMarketError, LoadMarketResult, WatchError, CommonResult, CreateOrderResult, OrderBookResult, WatchResult};
 use crate::{FetchMarketError, FetchMarketResult};
+use crate::client::{HttpClient, HttpClientBuilder, WsClient};
+use crate::error::{CommonError, CommonResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
 use crate::model::{Currency, Market, Order, OrderBook, Trade};
 use crate::util::OrderBookSynchronizer;
 
@@ -52,6 +53,7 @@ impl Unifier {
         self.symbol_id_to_unified_market.clear();
     }
 }
+
 
 pub enum StreamItem {
     OrderBook(OrderBookResult<OrderBook>),
@@ -116,10 +118,10 @@ impl ExchangeBase {
         let stream_parser = self.stream_parser;
         let mut order_book_stream_sender = self.order_book_stream_sender.clone();
         let mut receiver = self.ws_client.receiver();
+        let order_book_synchronizer = self.order_book_synchronizer.clone();
 
         let unifier = self.unifier.clone();
         tokio::spawn({
-            let order_book_synchronizer = self.order_book_synchronizer.clone();
             async move {
                 loop {
                     let message = receiver.as_mut().unwrap().next().await;
@@ -193,7 +195,7 @@ pub trait Exchange {
     async fn watch_status(&self) -> WatchResult<()> {
         Err(WatchError::NotImplemented)
     }
-    async fn watch_trades(&self) -> WatchResult<mpsc::Receiver<OrderBookResult<Trade>>> {
+    async fn watch_trades(&self) -> WatchResult<()> {
         Err(WatchError::NotImplemented)
     }
 

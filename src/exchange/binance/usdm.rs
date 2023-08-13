@@ -8,6 +8,7 @@ use futures::SinkExt;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use tokio_stream::StreamExt;
 
 use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
 use crate::client::EMPTY_QUERY;
@@ -47,7 +48,7 @@ impl BinanceUsdm {
                     Err(_) => Error::DeserializeJsonBody(message),
                 }
             })
-            .stream_parser(|message, unifier, order_book_sync| {
+            .stream_parser(|message, unifier, _| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription response
                     return None;
@@ -58,25 +59,26 @@ impl BinanceUsdm {
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Unknown market {}", resp.symbol),
+                                format!("Unknown market {}", resp.symbol), None,
                             ))));
                         }
+                        let market = market.unwrap();
                         let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid bid {:?}", resp.bids),
+                                format!("Invalid bid {:?}", resp.bids), Some(market),
                             ))));
                         }
                         let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid ask {:?}", resp.asks),
+                                format!("Invalid ask {:?}", resp.asks), Some(market),
                             ))));
                         }
                         let book = OrderBook::new(
                             bids.unwrap(),
                             asks.unwrap(),
-                            market.unwrap(),
+                            market,
                             Some(resp.event_time),
                             None,
                         );

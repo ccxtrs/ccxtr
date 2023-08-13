@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+
 use crate::error::Error;
 use crate::exchange::{StreamItem, Unifier};
 use crate::util::OrderBookSynchronizer;

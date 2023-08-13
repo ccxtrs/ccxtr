@@ -53,8 +53,15 @@ impl WsClient {
         let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(MAX_BUFFER);
         let sender = send_ch.clone();
         tokio::spawn(async move {
-            while let Some(x) = recv_ch.next().await {
-                let _ = tx.send(Message::from(x)).await;
+            while let x = recv_ch.next().await {
+                match x {
+                    Some(x) => {
+                        let _ = tx.send(Message::Text(x)).await;
+                    }
+                    None => {
+                        break;
+                    }
+                }
             }
         });
 

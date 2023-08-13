@@ -558,6 +558,19 @@ impl Into<(f64, f64)> for OrderBookUnit {
     }
 }
 
+
+
+impl TryFrom<&Vec<String>> for OrderBookUnit {
+    type Error = OrderBookError;
+
+    fn try_from(value: &Vec<String>) -> OrderBookResult<Self> {
+        Ok(OrderBookUnit {
+            price: value[0].parse::<f64>()?,
+            quantity: value[1].parse::<f64>()?,
+        })
+    }
+}
+
 impl TryFrom<&[String; 2]> for OrderBookUnit {
     type Error = OrderBookError;
 

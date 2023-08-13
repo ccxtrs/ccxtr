@@ -42,6 +42,7 @@ mod test {
 }
 
 
+#[derive(Debug)]
 pub(crate) struct OrderBookDiff {
     first_update_id: i64,
     final_update_id: i64,
@@ -51,7 +52,7 @@ pub(crate) struct OrderBookDiff {
 }
 
 impl OrderBookDiff {
-    fn new(first_update_id: i64, final_update_id: i64, bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, timestamp: Option<i64>) -> Self {
+    pub(crate) fn new(first_update_id: i64, final_update_id: i64, bids: Vec<OrderBookUnit>, asks: Vec<OrderBookUnit>, timestamp: Option<i64>) -> Self {
         Self {
             first_update_id,
             final_update_id,
@@ -100,6 +101,8 @@ impl OrderBookAggregator {
             handle_order_book(unit, &mut self.bids);
         }
 
+        self.last_update_id = order_book.last_update_id.unwrap();
+
         for unit in order_book.asks {
             handle_order_book(unit, &mut self.asks);
         }
@@ -144,7 +147,7 @@ impl OrderBookAggregator {
         }
 
         if self.is_synchronized && diff.first_update_id != self.last_update_id + 1 {
-            return Err(Error::InvalidOrderBook("invalid update id".to_string()));
+            return Err(Error::InvalidOrderBook(format!("invalid update id. diff first update id: {}, last update id: {}", diff.first_update_id, self.last_update_id)));
         }
 
         diff.bids.into_iter().for_each(|order_book_unit| {
@@ -206,10 +209,11 @@ impl OrderBookSynchronizer {
     pub(crate) fn append_and_get(&self, market: Market, diff: OrderBookDiff) -> Result<Option<OrderBook>> {
         let book = self.market_order_books.get(&market).ok_or(Error::InvalidMarket)?
             .lock()?
-            .append_and_get(diff)?.map(|mut order_book| {
-            order_book.market = market;
-            order_book
-        });
+            .append_and_get(diff)?
+            .map(|mut order_book| {
+                order_book.market = market;
+                order_book
+            });
         Ok(book)
     }
 
