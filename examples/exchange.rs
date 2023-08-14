@@ -25,7 +25,6 @@ async fn main() {
             _ => (),
         }
     }
-    // subscriptions = subscriptions[0..30].to_vec();
     println!("subscriptions: {:?}", subscriptions.len());
     let selections = Arc::new(subscriptions[0..10].to_vec());
     let mut select = Arc::new(atomic::AtomicI64::new(0));

@@ -1,27 +1,24 @@
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
-use std::ops;
 
-use chrono::{TimeZone, Utc};
-use chrono::LocalResult::Single;
 use serde::{Deserialize, Serialize};
+
 use crate::{OrderBookError, OrderBookResult};
 use crate::util::timestamp_format;
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OptionType {
     Call,
     Put,
 }
 
-#[derive(Hash, Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ContractType {
     Linear,
     Inverse,
 }
 
-#[derive(Hash, PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum MarketType {
     Spot,
     Margin,
@@ -29,6 +26,12 @@ pub enum MarketType {
     Futures,
     Option,
     Unknown,
+}
+
+impl Default for MarketType {
+    fn default() -> Self {
+        MarketType::Unknown
+    }
 }
 
 impl Display for MarketType {
@@ -45,7 +48,7 @@ impl Display for MarketType {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum FeeSide {
     Get,
     Give,
@@ -54,7 +57,7 @@ pub enum FeeSide {
     Other,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum MarketFee {
     TakerBasisPoints(f64),
     MakerBasisPoints(f64),
@@ -63,8 +66,7 @@ pub enum MarketFee {
 }
 
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Market {
     /// uppercase string, unified base currency code, 3 or more letters
     pub base: String,
@@ -120,10 +122,12 @@ pub struct Market {
 
 impl Display for Market {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}.{}", self.base, self.quote, self.market_type);
+        write!(f, "{}/{}.{}", self.base, self.quote, self.market_type)?;
         if self.expiry.is_some() {
             let delivery = timestamp_format(self.expiry.unwrap(), "%Y%m%d")?;
-            write!(f, ".{}", delivery);
+            write!(f, ".{}", delivery)?;
+        } else if self.market_type == MarketType::Swap {
+            write!(f, ".SWAP")?;
         }
         Ok(())
     }
@@ -135,29 +139,6 @@ impl Hash for Market {
         self.quote.hash(state);
         self.market_type.hash(state);
         self.expiry.hash(state);
-    }
-}
-
-impl Default for Market {
-    fn default() -> Self {
-        Market {
-            base: "".to_string(),
-            quote: "".to_string(),
-            active: false,
-            market_type: MarketType::Unknown,
-            settle: None,
-            contract_size: None,
-            contract_type: None,
-            expiry: None,
-            strike: None,
-            option_type: None,
-            fee: None,
-            fee_currency: None,
-            fee_currency_id: None,
-            fee_side: None,
-            precision: None,
-            limit: None,
-        }
     }
 }
 
@@ -173,7 +154,7 @@ impl PartialEq<Self> for Market {
 impl Eq for Market {}
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Precision {
     /// number of decimal digits after the decimal point
     pub price: Option<isize>,
@@ -186,7 +167,7 @@ pub struct Precision {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MarketLimit {
     pub amount: Option<Range>,
     pub price: Option<Range>,
@@ -196,7 +177,7 @@ pub struct MarketLimit {
     pub leverage: Option<Range>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Currency {
     /// An uppercase string code representation of a particular currency. Currency codes are used
     /// to reference currencies within the ccxtr library.
@@ -231,16 +212,21 @@ pub struct Currency {
     pub network: Network,
 }
 
-pub type Range = ops::Range<f64>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Range {
+    pub min: f64,
+    pub max: f64,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CurrencyLimit {
     pub amount: Option<Range>,
     pub withdraw: Option<Range>,
     pub deposit: Option<Range>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Network {
     /// An uppercase string representation of a particular network. Networks are used to reference
     /// networks within the ccxtr library.
@@ -273,18 +259,13 @@ pub struct Network {
 }
 
 
-
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Order {
     ///  The string ID of the network within the exchange.
     pub id: Option<String>,
 
     ///  a user-defined clientOrderId, if any
     pub client_order_id: Option<String>,
-
-    /// ISO8601 datetime of 'timestamp' with milliseconds
-    pub datetime: String,
 
     /// order placing/opening Unix timestamp in milliseconds
     pub timestamp: i64,
@@ -305,7 +286,7 @@ pub struct Order {
     pub time_in_force: Option<TimeInForce>,
 
     /// 'buy', 'sell'
-    pub side: OrderSide,
+    pub side: Option<OrderSide>,
 
     /// float price in quote currency (may be empty for market orders)
     pub price: Option<f64>,
@@ -331,34 +312,8 @@ pub struct Order {
     /// fee info, if available
     pub fee: Option<OrderFee>,
 }
-impl Default for Order {
-    fn default() -> Self {
-        let timestamp = Utc::now().timestamp_millis();
-        let date_time = Utc.timestamp_millis_opt(timestamp).unwrap().to_rfc3339();
-        Self {
-            id: None,
-            client_order_id: None,
-            datetime: date_time,
-            timestamp,
-            last_trade_timestamp: None,
-            status: OrderStatus::Open,
-            market: Market::default(),
-            order_type: OrderType::default(),
-            time_in_force: None,
-            side: OrderSide::Buy,
-            price: None,
-            amount: f64::default(),
-            cost: None,
-            average: None,
-            filled: None,
-            remaining: None,
-            fee: None,
-            trades: None,
-        }
-    }
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Trade {
     /// trade id
     pub id: String,
@@ -379,7 +334,7 @@ pub struct Trade {
     pub order_type: Option<OrderType>,
 
     /// direction of the trade, 'buy' or 'sell'
-    pub side: OrderSide,
+    pub side: Option<OrderSide>,
 
     /// taker or maker
     pub is_maker: bool,
@@ -401,7 +356,7 @@ pub struct Trade {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct OrderFee {
     /// which currency the fee is (usually quote)
     currency: String,
@@ -413,7 +368,7 @@ pub struct OrderFee {
     rate: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OrderSide {
     Buy,
     Sell,
@@ -445,7 +400,7 @@ impl Into<String> for OrderSide {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TimeInForce {
     /// Good Till Cancel(ed), the order stays on the orderbook until it is matched or canceled.
     GTC,
@@ -465,7 +420,7 @@ pub enum TimeInForce {
     PO,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OrderType {
     /// regular orders having an amount in base currency (how much you want to buy or sell) and a
     /// price in quote currency (for which price you want to buy or sell).
@@ -511,7 +466,7 @@ impl Default for OrderType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum OrderStatus {
     Open,
     Closed,
@@ -521,8 +476,14 @@ pub enum OrderStatus {
     Unknown,
 }
 
+impl Default for OrderStatus {
+    fn default() -> Self {
+        OrderStatus::Unknown
+    }
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderBook {
     pub bids: Vec<OrderBookUnit>,
     pub asks: Vec<OrderBookUnit>,
@@ -562,7 +523,7 @@ impl From<String> for OrderBook {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookUnit {
     pub price: f64,
     pub quantity: f64,
@@ -573,7 +534,6 @@ impl Into<(f64, f64)> for OrderBookUnit {
         (self.price, self.quantity)
     }
 }
-
 
 
 impl TryFrom<&Vec<String>> for OrderBookUnit {

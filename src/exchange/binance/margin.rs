@@ -236,11 +236,10 @@ impl TryFrom<CreateOrderResponse> for Order {
         Ok(Order {
             id: Some(resp.order_id.to_string()),
             client_order_id: Some(resp.client_order_id),
-            datetime: timestamp.to_rfc3339(),
             timestamp: resp.update_time,
             status: order_status,
             time_in_force: Some(util::get_unified_time_in_force(&resp.time_in_force)?),
-            side: util::get_unified_order_side(&resp.side)?,
+            side: Some(util::get_unified_order_side(&resp.side)?),
             price: Some(resp.price.parse()?),
             average: Some(resp.avg_price.parse()?),
             amount: resp.orig_qty.parse()?,
@@ -375,26 +374,26 @@ impl Into<Result<Market>> for &Symbol {
             for filter in filters.iter() {
                 match filter.filter_type.as_str() {
                     "PRICE_FILTER" => {
-                        let start = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".into()))?.parse::<f64>()?;
-                        let end = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".into()))?.parse::<f64>()?;
-                        limit.price = Some(Range { start, end });
+                        let min = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".into()))?.parse::<f64>()?;
+                        let max = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".into()))?.parse::<f64>()?;
+                        limit.price = Some(Range { min, max });
                     }
                     "LOT_SIZE" => {
-                        let start = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".into()))?.parse::<f64>()?;
-                        let end = filter.max_qty.as_ref().ok_or_else(|| Error::MissingField("max_qty".into()))?.parse::<f64>()?;
-                        limit.amount = Some(Range { start, end });
+                        let min = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".into()))?.parse::<f64>()?;
+                        let max = filter.max_qty.as_ref().ok_or_else(|| Error::MissingField("max_qty".into()))?.parse::<f64>()?;
+                        limit.amount = Some(Range { min, max });
                         let step_size = filter.step_size.as_ref().ok_or_else(|| Error::MissingField("step_size".into()))?;
                         precision.amount = Some(into_precision(step_size.clone())?);
                     }
                     "MIN_NOTIONAL" => {
-                        let start = filter.min_notional.as_ref().ok_or_else(|| Error::MissingField("min_notional".into()))?.parse::<f64>()?;
-                        let cost = limit.cost.map_or_else(|| Range { start, end: f64::MAX }, |r| Range { start, end: r.end });
+                        let min = filter.min_notional.as_ref().ok_or_else(|| Error::MissingField("min_notional".into()))?.parse::<f64>()?;
+                        let cost = limit.cost.map_or_else(|| Range { min, max: f64::MAX }, |r| Range { min, max: r.max });
                         limit.cost = Some(cost);
                     }
                     "NOTIONAL" => {
-                        let start = filter.min_notional.as_ref().ok_or_else(|| Error::MissingField("min_notional".into()))?.parse::<f64>()?;
-                        let end = filter.max_notional.as_ref().ok_or_else(|| Error::MissingField("max_notional".into()))?.parse::<f64>()?;
-                        limit.cost = Some(Range { start, end });
+                        let min = filter.min_notional.as_ref().ok_or_else(|| Error::MissingField("min_notional".into()))?.parse::<f64>()?;
+                        let max = filter.max_notional.as_ref().ok_or_else(|| Error::MissingField("max_notional".into()))?.parse::<f64>()?;
+                        limit.cost = Some(Range { min, max });
                     }
                     // "MARKET_LOT_SIZE" => {},
                     // "MAX_NUM_ORDERS" => {},
