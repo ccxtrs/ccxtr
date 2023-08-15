@@ -23,7 +23,7 @@ pub enum MarketType {
     Spot,
     Margin,
     Swap,
-    Futures,
+    Future,
     Option,
     Unknown,
 }
@@ -40,7 +40,7 @@ impl Display for MarketType {
             MarketType::Spot => write!(f, "SPOT"),
             MarketType::Margin => write!(f, "MARGIN"),
             MarketType::Swap => write!(f, "SWAP"),
-            MarketType::Futures => write!(f, "FUTURES"),
+            MarketType::Future => write!(f, "FUTURE"),
             MarketType::Option => write!(f, "OPTION"),
             MarketType::Unknown => write!(f, "UNKNOWN"),
         }

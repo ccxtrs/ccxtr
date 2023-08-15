@@ -377,8 +377,8 @@ impl Into<Result<Market>> for &Symbol {
 
         let market_type = match self.contract_type {
             Some(ref s) if s == "PERPETUAL" => MarketType::Swap,
-            Some(ref s) if s == "CURRENT_QUARTER" => MarketType::Futures,
-            Some(ref s) if s == "NEXT_QUARTER" => MarketType::Futures,
+            Some(ref s) if s == "CURRENT_QUARTER" => MarketType::Future,
+            Some(ref s) if s == "NEXT_QUARTER" => MarketType::Future,
             _ => MarketType::Unknown,
         };
 
