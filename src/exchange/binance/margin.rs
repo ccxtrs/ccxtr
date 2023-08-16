@@ -32,7 +32,7 @@ pub struct BinanceMargin {
 impl BinanceMargin {
     pub fn new(props: Properties) -> CommonResult<Self> {
         let common_props = PropertiesBuilder::new()
-            .host(props.host.unwrap_or_else(|| "https://api.binance.com".into()))
+            .host(props.host.as_ref().map_or("https://api.binance.com", |s| s.as_str()))
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://stream.binance.com:9443/ws")
             .error_parser(|message| {

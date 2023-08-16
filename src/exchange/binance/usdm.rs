@@ -27,7 +27,7 @@ pub struct BinanceUsdm {
 impl BinanceUsdm {
     pub fn new(props: Properties) -> CommonResult<Self> {
         let common_props = PropertiesBuilder::new()
-            .host(props.host.unwrap_or_else(|| "https://fapi.binance.com".into()))
+            .host(props.host.as_ref().map_or("https://fapi.binance.com", |s| s.as_str()))
             .port(props.port.unwrap_or(443))
             .ws_endpoint("wss://fstream.binance.com/ws")
             .error_parser(|message| {
