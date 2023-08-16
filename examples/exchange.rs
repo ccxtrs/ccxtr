@@ -11,7 +11,7 @@ use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
 async fn main() {
     let api_key = std::env::var("API_KEY").unwrap();
     let secret = std::env::var("SECRET").unwrap();
-    let props = PropertiesBuilder::new().api_key(api_key).secret(secret).build();
+    let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = BinanceMargin::new(props).unwrap();
     ex.fetch_markets().await.unwrap();
     ex.connect().await.unwrap();
