@@ -31,7 +31,7 @@ impl PropertiesBuilder {
         Self::default()
     }
 
-    pub fn host<S: Into<String>>(mut self, host: S) -> Self {
+    pub fn host(mut self, host: &str) -> Self {
         self.host = Some(host.into());
         self
     }
@@ -41,17 +41,17 @@ impl PropertiesBuilder {
         self
     }
 
-    pub fn api_key<S: Into<String>>(mut self, api_key: S) -> Self {
+    pub fn api_key(mut self, api_key: &str) -> Self {
         self.api_key = Some(api_key.into());
         self
     }
 
-    pub fn secret<S: Into<String>>(mut self, secret_key: S) -> Self {
+    pub fn secret(mut self, secret_key: &str) -> Self {
         self.secret = Some(secret_key.into());
         self
     }
 
-    pub fn ws_endpoint<S: Into<String>>(mut self, ws_endpoint: S) -> Self {
+    pub fn ws_endpoint(mut self, ws_endpoint: &str) -> Self {
         self.ws_endpoint = Some(ws_endpoint.into());
         self
     }
