@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, atomic, RwLock};
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use futures::channel::mpsc;
@@ -8,7 +7,7 @@ use futures::StreamExt;
 
 pub use binance::BinanceMargin;
 pub use binance::BinanceUsdm;
-use property::Properties;
+pub use property::Properties;
 pub use property::PropertiesBuilder;
 
 use crate::{FetchMarketError, FetchMarketResult};
@@ -133,7 +132,7 @@ impl ExchangeBase {
                                 }
                                 Some(StreamItem::OrderBook(order_book)) => {
                                     let _ = order_book_stream_sender.try_send(order_book);
-                                },
+                                }
                             }
                         }
                         None => {

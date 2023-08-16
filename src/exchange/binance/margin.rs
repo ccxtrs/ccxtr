@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::sync::mpsc;
+
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::Utc;
 use futures::channel::mpsc::Receiver;
 use futures::SinkExt;
 use hmac::{Hmac, Mac};
@@ -11,7 +11,7 @@ use sha2::Sha256;
 use crate::{CommonResult, CreateOrderResult, Exchange, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, PropertiesBuilder, WatchError, WatchResult};
 use crate::client::{EMPTY_BODY, EMPTY_QUERY};
 use crate::error::{Error, Result};
-use crate::exchange::{ExchangeBase, MAX_BUFFER, StreamItem};
+use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::exchange::property::Properties;
 use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, Precision, Range, TimeInForce};
@@ -31,7 +31,6 @@ pub struct BinanceMargin {
 
 impl BinanceMargin {
     pub fn new(props: Properties) -> CommonResult<Self> {
-        let (tx, rx) = mpsc::channel::<Market>();
         let common_props = PropertiesBuilder::new()
             .host(props.host.unwrap_or_else(|| "https://api.binance.com".into()))
             .port(props.port.unwrap_or(443))
@@ -121,7 +120,7 @@ impl BinanceMargin {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials);
         }
-        let mut params = params.iter()
+        let params = params.iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<String>>()
             .join("&");

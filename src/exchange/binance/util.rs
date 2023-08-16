@@ -23,6 +23,7 @@ const GTC: &str = "GTC";
 const IOC: &str = "IOC";
 const FOK: &str = "FOK";
 const PO: &str = "PO";
+
 pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> &'static str {
     match time_in_force {
         TimeInForce::GTC => GTC,
@@ -35,6 +36,7 @@ pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> &'st
 const NO_SIDE_EFFECT: &str = "NO_SIDE_EFFECT";
 const MARGIN_BUY: &str = "MARGIN_BUY";
 const AUTO_REPAY: &str = "AUTO_REPAY";
+
 pub(in super) fn get_exchange_margin_type(margin_type: &MarginType) -> &'static str {
     match margin_type {
         MarginType::NoSideEffect => NO_SIDE_EFFECT,
@@ -48,6 +50,7 @@ const LIMIT: &str = "LIMIT";
 const MARKET: &str = "MARKET";
 const STOP_LOSS: &str = "STOP_LOSS";
 const TAKE_PROFIT: &str = "TAKE_PROFIT";
+
 pub(in super) fn get_exchange_order_type(order_type: &OrderType) -> Result<&'static str> {
     match order_type {
         OrderType::Limit => Ok(LIMIT),
@@ -61,6 +64,7 @@ pub(in super) fn get_exchange_order_type(order_type: &OrderType) -> Result<&'sta
 
 const BUY: &str = "BUY";
 const SELL: &str = "SELL";
+
 pub(in super) fn get_exchange_order_side(order_side: &OrderSide) -> &'static str {
     match order_side {
         OrderSide::Buy => BUY,

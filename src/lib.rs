@@ -1,5 +1,5 @@
 mod exchange;
-pub mod client;
+mod client;
 mod error;
 mod util;
 
@@ -15,9 +15,11 @@ pub use crate::error::{CreateOrderResult, CreateOrderError};
 
 
 pub use exchange::Exchange;
+pub use exchange::PropertiesBuilder;
+pub use exchange::Properties;
+
 pub use exchange::BinanceUsdm;
 pub use exchange::BinanceMargin;
-pub use exchange::PropertiesBuilder;
 
 pub use futures::StreamExt;
 

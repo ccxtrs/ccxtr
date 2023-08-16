@@ -30,7 +30,7 @@ impl PropertiesBuilder {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn host<S: Into<String>>(mut self, host: S) -> Self {
         self.host = Some(host.into());
         self

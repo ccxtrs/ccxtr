@@ -53,7 +53,8 @@ impl WsClient {
         let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(MAX_BUFFER);
         let sender = send_ch.clone();
         tokio::spawn(async move {
-            while let x = recv_ch.next().await {
+            loop {
+                let x = recv_ch.next().await;
                 match x {
                     Some(x) => {
                         let _ = tx.send(Message::Text(x)).await;
@@ -176,7 +177,7 @@ impl HttpClientBuilder {
             client: result?,
             host: self.host,
             port: self.port,
-            error_parser: self.error_parser.unwrap_or(|x| Error::HttpError(x))
+            error_parser: self.error_parser.unwrap_or(|x| Error::HttpError(x)),
         })
     }
 }

@@ -2,7 +2,6 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
-
 #[derive(PartialEq)]
 pub(crate) enum SortedMapOrder {
     Ascending,
@@ -50,7 +49,7 @@ impl<K: Ord + Clone + Hash, V: Clone> SortedMap<K, V> {
         }
         self.map.insert(key.clone(), value);
     }
-    
+
     pub(crate) fn remove(&mut self, key: K) {
         self.map.remove(&key);
         self.keys.retain(|x| x != &key);

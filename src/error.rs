@@ -4,8 +4,8 @@ use std::sync::PoisonError;
 use futures::channel::mpsc;
 use hmac::digest::InvalidLength;
 use thiserror::Error;
-use crate::model::Market;
 
+use crate::model::Market;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
@@ -42,8 +42,8 @@ pub(crate) enum Error {
 
 
 impl From<Error> for std::fmt::Error {
-    fn from(value: Error) -> Self {
-        std::fmt::Error{}
+    fn from(_: Error) -> Self {
+        std::fmt::Error {}
     }
 }
 

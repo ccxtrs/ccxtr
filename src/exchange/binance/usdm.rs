@@ -1,13 +1,12 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::Utc;
 use futures::channel::mpsc::Receiver;
 use futures::SinkExt;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use tokio_stream::StreamExt;
 
 use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
 use crate::client::EMPTY_QUERY;
@@ -267,7 +266,6 @@ impl TryFrom<CreateOrderResponse> for Order {
     type Error = Error;
 
     fn try_from(resp: CreateOrderResponse) -> std::result::Result<Self, Self::Error> {
-        let timestamp = Utc.timestamp_millis_opt(resp.update_time).unwrap();
         let order_status = util::get_unified_order_status(&resp.status)?;
         let amount = resp.orig_qty.parse()?;
         let remaining = match order_status {

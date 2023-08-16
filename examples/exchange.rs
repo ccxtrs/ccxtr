@@ -59,18 +59,18 @@ async fn main() {
                     Ok(order_book) => {
                         if order_book.market == selections[select.load(atomic::Ordering::Relaxed) as usize] {
                             println!("[{}] bid={:?}({:?}) ask={:?}({:?})",
-                                order_book.market,
-                                order_book.bids[0].price,
-                                order_book.bids[0].quantity,
-                                order_book.asks[0].price,
-                                order_book.asks[0].quantity,
+                                     order_book.market,
+                                     order_book.bids[0].price,
+                                     order_book.bids[0].quantity,
+                                     order_book.asks[0].price,
+                                     order_book.asks[0].quantity,
                             );
                         }
-                    },
+                    }
                     Err(OrderBookError::InvalidOrderBook(_, m)) => {
                         let market = m.unwrap();
                         let _ = ex.watch_order_book(&vec![market.clone()]).await;
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -85,7 +85,7 @@ async fn main() {
         match input {
             "q" => {
                 break;
-            },
+            }
             "n" => {
                 let mut num = select.load(atomic::Ordering::Relaxed);
                 num += 1;
@@ -94,7 +94,7 @@ async fn main() {
                 }
                 println!("select: {}", selections[num as usize]);
                 select.store(num, atomic::Ordering::Relaxed);
-            },
+            }
             "p" => {
                 let mut num = select.load(atomic::Ordering::Relaxed);
                 num -= 1;
@@ -103,10 +103,8 @@ async fn main() {
                 }
                 println!("select: {}", selections[num as usize]);
                 select.store(num, atomic::Ordering::Relaxed);
-            },
+            }
             _ => {}
         }
     }
-
-
 }
