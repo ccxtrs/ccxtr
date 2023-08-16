@@ -5,7 +5,7 @@ use futures::StreamExt;
 
 use ccxtr::{BinanceMargin, OrderBookError, OrderBookResult, PropertiesBuilder};
 use ccxtr::Exchange;
-use ccxtr::model::{Market, MarketType, Order, OrderSide, OrderType};
+use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
 
 #[tokio::main]
 async fn main() {
@@ -17,14 +17,34 @@ async fn main() {
     ex.connect().await.unwrap();
     let markets = ex.load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
+    let mut order_market = None;
     for m in markets {
         match m {
             Market { ref base, ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
                 subscriptions.push(m.clone());
             }
+            Market { ref base, ref quote, ref market_type, .. } if base == "BTC" && quote == "USDT" && *market_type == MarketType::Margin => {
+                order_market = Some(m.clone());
+            }
             _ => (),
         }
     }
+
+    let order = Order {
+        market: order_market.unwrap(),
+        order_type: OrderType::Limit,
+        side: Some(OrderSide::Buy),
+        price: Some(20000_f64),
+        amount: 0.001,
+        margin_type: MarginType::MarginBuy,
+        ..Default::default()
+    };
+    let order = ex.create_order(order).await.or_else(|e| {
+        println!("create order error: {:?}", e);
+        Err(e)
+    });
+    println!("order: {:?}", order);
+    return;
     println!("subscriptions: {:?}", subscriptions.len());
     let selections = Arc::new(subscriptions[0..10].to_vec());
     let mut select = Arc::new(atomic::AtomicI64::new(0));
@@ -57,6 +77,7 @@ async fn main() {
         }
     });
 
+
     loop {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
@@ -87,17 +108,5 @@ async fn main() {
         }
     }
 
-    // let order = Order {
-    //     market: btc_usdt.unwrap().clone(),
-    //     order_type: OrderType::Limit,
-    //     side: OrderSide::Buy,
-    //     price: Some(20000_f64),
-    //     amount: 0.001,
-    //     ..Default::default()
-    // };
-    // let _ = ex.create_order(order).await.or_else(|e| {
-    //     println!("create order error: {:?}", e);
-    //     Err(e)
-    // });
 
 }

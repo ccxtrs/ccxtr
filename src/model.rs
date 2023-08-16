@@ -311,6 +311,9 @@ pub struct Order {
 
     /// fee info, if available
     pub fee: Option<OrderFee>,
+
+    /// margin type, 'no side effect', 'margin buy', 'auto repay'
+    pub margin_type: MarginType,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -418,6 +421,20 @@ pub enum TimeInForce {
     /// of PO as a timeInForce option is a work in progress with unified exchanges having
     /// exchange.has['postOnly'] == True.
     PO,
+}
+
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum MarginType {
+    NoSideEffect,
+    MarginBuy,
+    AutoRepay,
+}
+
+impl Default for MarginType {
+    fn default() -> Self {
+        MarginType::NoSideEffect
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

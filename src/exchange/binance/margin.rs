@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::mpsc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
@@ -7,13 +8,13 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{CommonResult, Exchange, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, PropertiesBuilder, WatchError, WatchResult};
-use crate::client::EMPTY_QUERY;
+use crate::{CommonResult, CreateOrderResult, Exchange, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, PropertiesBuilder, WatchError, WatchResult};
+use crate::client::{EMPTY_BODY, EMPTY_QUERY};
 use crate::error::{Error, Result};
 use crate::exchange::{ExchangeBase, MAX_BUFFER, StreamItem};
 use crate::exchange::binance::util;
 use crate::exchange::property::Properties;
-use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, Precision, Range};
+use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, Precision, Range, TimeInForce};
 use crate::util::{into_precision, OrderBookDiff};
 
 #[derive(Serialize, Deserialize)]
@@ -115,6 +116,17 @@ impl BinanceMargin {
         signed_key.update(request.as_bytes());
         Ok(hex::encode(signed_key.finalize().into_bytes()))
     }
+
+    fn auth_map(&self, params: &HashMap<&str, &str>) -> Result<String> {
+        if self.api_key.is_none() || self.secret.is_none() {
+            return Err(Error::InvalidCredentials);
+        }
+        let mut params = params.iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<String>>()
+            .join("&");
+        Ok(self.auth(&params)?)
+    }
 }
 
 #[async_trait]
@@ -182,6 +194,40 @@ impl Exchange for BinanceMargin {
         Ok(self.exchange_base.order_book_stream.take()
             .ok_or(Error::WebsocketError("no receiver".into()))?)
     }
+
+    async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {
+        if request.price.is_none() && request.order_type == OrderType::Limit {
+            return Err(Error::InvalidPrice("price is required for limit orders".into()).into());
+        }
+        let symbol_id = self.exchange_base.unifier.get_symbol_id(&request.market).ok_or(Error::SymbolNotFound(format!("{}", request.market)))?;
+        let timestamp = Utc::now().timestamp_millis();
+
+        let amount = request.amount.to_string();
+        let timestamp = timestamp.to_string();
+        let price = request.price.map_or("".to_string(), |price| price.to_string());
+
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        params.insert("symbol", symbol_id.as_str());
+        params.insert("side", util::get_exchange_order_side(&request.side.ok_or(Error::MissingField("side".into()))?));
+        params.insert("type", util::get_exchange_order_type(&request.order_type)?);
+        params.insert("quantity", amount.as_str());
+        params.insert("timeInForce", util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC)));
+        params.insert("recvWindow", "5000");
+        params.insert("timestamp", timestamp.as_str());
+        params.insert("sideEffectType", util::get_exchange_margin_type(&request.margin_type));
+        if price != "" {
+            params.insert("price", price.as_str());
+        }
+
+        let signature = self.auth_map(&params)?;
+        params.insert("signature", signature.as_str());
+        let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
+        let response: CreateOrderResponse = self.exchange_base.http_client.post("/sapi/v1/margin/order", Some(headers), Some(&params), EMPTY_BODY).await?;
+        let mut order: Order = response.try_into()?;
+        order.market = request.market;
+        order.order_type = request.order_type;
+        Ok(order)
+    }
 }
 
 
@@ -197,38 +243,38 @@ struct GetOrderBookSnapshotResponse {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateOrderResponse {
-    client_order_id: String,
-    cum_quote: String,
-    executed_qty: String,
-    order_id: i64,
-    avg_price: String,
-    orig_qty: String,
-    price: String,
-    reduce_only: bool,
-    side: String,
-    position_side: String,
-    status: String,
-    stop_price: String,
-    close_position: bool,
-    symbol: String,
-    time_in_force: String,
+    pub symbol: String,
+    #[serde(rename = "orderId")]
+    pub order_id: i64,
+    #[serde(rename = "clientOrderId")]
+    pub client_order_id: String,
+    #[serde(rename = "transactTime")]
+    pub transaction_time: i64,
+    pub price: String,
+    #[serde(rename = "origQty")]
+    pub original_quantity: String,
+    #[serde(rename = "executedQty")]
+    pub executed_quantity: String,
+    #[serde(rename = "cummulativeQuoteQty")]
+    pub cumulative_quote_quantity: String,
+    pub status: String,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
     #[serde(rename = "type")]
-    order_type: String,
-    orig_type: String,
-    activate_price: Option<String>,
-    price_rate: Option<String>,
-    update_time: i64,
-    working_type: String,
-    price_protect: bool,
+    pub order_type: String,
+    #[serde(rename = "isIsolated")]
+    pub is_isolated: bool,
+    pub side: String,
+    #[serde(rename = "selfTradePreventionMode")]
+    pub self_trade_prevention_mode: String,
 }
 
 impl TryFrom<CreateOrderResponse> for Order {
     type Error = Error;
 
     fn try_from(resp: CreateOrderResponse) -> std::result::Result<Self, Self::Error> {
-        let timestamp = Utc.timestamp_millis_opt(resp.update_time).unwrap();
         let order_status = util::get_unified_order_status(&resp.status)?;
-        let amount = resp.orig_qty.parse()?;
+        let amount = resp.original_quantity.parse()?;
         let remaining = match order_status {
             OrderStatus::Open => Some(amount),
             _ => None,
@@ -236,13 +282,12 @@ impl TryFrom<CreateOrderResponse> for Order {
         Ok(Order {
             id: Some(resp.order_id.to_string()),
             client_order_id: Some(resp.client_order_id),
-            timestamp: resp.update_time,
+            timestamp: resp.transaction_time,
             status: order_status,
             time_in_force: Some(util::get_unified_time_in_force(&resp.time_in_force)?),
             side: Some(util::get_unified_order_side(&resp.side)?),
             price: Some(resp.price.parse()?),
-            average: Some(resp.avg_price.parse()?),
-            amount: resp.orig_qty.parse()?,
+            amount: resp.original_quantity.parse()?,
             remaining,
             ..Default::default()
         })

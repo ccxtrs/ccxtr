@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::model::{OrderSide, OrderStatus, OrderType, TimeInForce};
+use crate::model::{MarginType, OrderSide, OrderStatus, OrderType, TimeInForce};
 
 pub(in super) fn to_unified_asset(exchange_asset: &str) -> String {
     exchange_asset.to_uppercase()
@@ -19,32 +19,53 @@ pub(in super) fn get_unified_time_in_force(time_in_force: &str) -> Result<TimeIn
     }
 }
 
-pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> String {
+const GTC: &str = "GTC";
+const IOC: &str = "IOC";
+const FOK: &str = "FOK";
+const PO: &str = "PO";
+pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> &'static str {
     match time_in_force {
-        TimeInForce::GTC => "GTC".to_string(),
-        TimeInForce::IOC => "IOC".to_string(),
-        TimeInForce::FOK => "FOK".to_string(),
-        TimeInForce::PO => "PO".to_string(),
+        TimeInForce::GTC => GTC,
+        TimeInForce::IOC => IOC,
+        TimeInForce::FOK => FOK,
+        TimeInForce::PO => PO,
+    }
+}
+
+const NO_SIDE_EFFECT: &str = "NO_SIDE_EFFECT";
+const MARGIN_BUY: &str = "MARGIN_BUY";
+const AUTO_REPAY: &str = "AUTO_REPAY";
+pub(in super) fn get_exchange_margin_type(margin_type: &MarginType) -> &'static str {
+    match margin_type {
+        MarginType::NoSideEffect => NO_SIDE_EFFECT,
+        MarginType::MarginBuy => MARGIN_BUY,
+        MarginType::AutoRepay => AUTO_REPAY,
     }
 }
 
 
-
-pub(in super) fn get_exchange_order_type(order_type: &OrderType) -> Result<String> {
+const LIMIT: &str = "LIMIT";
+const MARKET: &str = "MARKET";
+const STOP_LOSS: &str = "STOP_LOSS";
+const TAKE_PROFIT: &str = "TAKE_PROFIT";
+pub(in super) fn get_exchange_order_type(order_type: &OrderType) -> Result<&'static str> {
     match order_type {
-        OrderType::Limit => Ok("LIMIT".to_string()),
-        OrderType::Market => Ok("MARKET".to_string()),
-        OrderType::StopLoss => Ok("STOP_LOSS".to_string()),
-        OrderType::TakeProfit => Ok("TAKE_PROFIT".to_string()),
+        OrderType::Limit => Ok(LIMIT),
+        OrderType::Market => Ok(MARKET),
+        OrderType::StopLoss => Ok(STOP_LOSS),
+        OrderType::TakeProfit => Ok(TAKE_PROFIT),
         _ => Err(Error::UnsupportedOrderType(order_type.to_string())),
     }
 }
 
-pub(in super) fn get_exchange_order_side(order_side: &OrderSide) -> String {
+
+const BUY: &str = "BUY";
+const SELL: &str = "SELL";
+pub(in super) fn get_exchange_order_side(order_side: &OrderSide) -> &'static str {
     match order_side {
-        OrderSide::Buy => "BUY",
-        OrderSide::Sell => "SELL",
-    }.to_string()
+        OrderSide::Buy => BUY,
+        OrderSide::Sell => SELL,
+    }
 }
 
 pub(in super) fn get_unified_order_side(exchange_order_side: &str) -> Result<OrderSide> {
