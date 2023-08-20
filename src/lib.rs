@@ -22,4 +22,5 @@ pub use exchange::BinanceUsdm;
 pub use exchange::BinanceMargin;
 
 pub use futures::StreamExt;
+pub use futures::channel::mpsc::Receiver;
 
