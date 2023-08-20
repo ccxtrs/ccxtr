@@ -25,7 +25,7 @@ pub struct BinanceUsdm {
 
 
 impl BinanceUsdm {
-    pub fn new(props: Properties) -> CommonResult<Self> {
+    pub fn new(props: &Properties) -> CommonResult<Self> {
         let common_props = PropertiesBuilder::new()
             .host(props.host.as_ref().map_or("https://fapi.binance.com", |s| s.as_str()))
             .port(props.port.unwrap_or(443))
@@ -87,9 +87,9 @@ impl BinanceUsdm {
             });
 
         Ok(Self {
-            exchange_base: ExchangeBase::new(common_props.build())?,
-            api_key: props.api_key,
-            secret: props.secret,
+            exchange_base: ExchangeBase::new(&common_props.build())?,
+            api_key: props.api_key.clone(),
+            secret: props.secret.clone(),
         })
     }
     pub async fn connect(&mut self) -> CommonResult<()> {

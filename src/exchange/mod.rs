@@ -78,7 +78,7 @@ const MAX_CAPACITY: usize = !(OPEN_MASK);
 const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
 
 impl ExchangeBase {
-    pub(crate) fn new(properties: Properties) -> Result<Self> {
+    pub(crate) fn new(properties: &Properties) -> Result<Self> {
         if properties.host.is_none() {
             return Err(Error::MissingProperties("host".into()));
         }
@@ -89,11 +89,11 @@ impl ExchangeBase {
             return Err(Error::MissingProperties("ws_endpoint".into()));
         }
         let http_client = HttpClientBuilder::new()
-            .host(properties.host.unwrap())
-            .port(properties.port.unwrap())
+            .host(properties.host.clone().unwrap())
+            .port(properties.port.clone().unwrap())
             .error_parser(properties.error_parser)
             .build().unwrap();
-        let ws_client = WsClient::new(properties.ws_endpoint.unwrap().as_str());
+        let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
         let (order_book_stream_sender, order_book_stream) = mpsc::channel::<OrderBookResult<OrderBook>>(MAX_BUFFER);
 
         Ok(Self {
