@@ -61,6 +61,7 @@ pub enum StreamItem {
 pub struct ExchangeBase {
     pub(super) http_client: HttpClient,
     pub(super) ws_client: WsClient,
+    pub(super) is_connected: bool,
 
     stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>,
 
@@ -105,6 +106,7 @@ impl ExchangeBase {
             order_book_stream_sender,
             order_book_stream: Some(order_book_stream),
             order_book_synchronizer: Arc::new(RwLock::new(OrderBookSynchronizer::new())),
+            is_connected: false,
         })
     }
 
@@ -142,7 +144,7 @@ impl ExchangeBase {
                 }
             }
         });
-
+        self.is_connected = true;
         Ok(())
     }
 }

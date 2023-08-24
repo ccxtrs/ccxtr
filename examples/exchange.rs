@@ -13,8 +13,6 @@ async fn main() {
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = BinanceMargin::new(&props).unwrap();
-    ex.fetch_markets().await.unwrap();
-    ex.connect().await.unwrap();
     let markets = ex.load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;
@@ -30,21 +28,7 @@ async fn main() {
         }
     }
 
-    let order = Order {
-        market: order_market.unwrap(),
-        order_type: OrderType::Limit,
-        side: Some(OrderSide::Buy),
-        price: Some(20000_f64),
-        amount: 0.001,
-        margin_type: MarginType::MarginBuy,
-        ..Default::default()
-    };
-    let order = ex.create_order(order).await.or_else(|e| {
-        println!("create order error: {:?}", e);
-        Err(e)
-    });
-    println!("order: {:?}", order);
-    return;
+    // create_order(&mut ex, &order_market.unwrap()).await;
     println!("subscriptions: {:?}", subscriptions.len());
     let selections = Arc::new(subscriptions[0..10].to_vec());
     let mut select = Arc::new(atomic::AtomicI64::new(0));
@@ -107,4 +91,21 @@ async fn main() {
             _ => {}
         }
     }
+}
+
+async fn create_order(ex: &mut BinanceMargin, order_market: &Market) {
+    let order = Order {
+        market: order_market.clone(),
+        order_type: OrderType::Limit,
+        side: Some(OrderSide::Buy),
+        price: Some(20000_f64),
+        amount: 0.001,
+        margin_type: MarginType::MarginBuy,
+        ..Default::default()
+    };
+    let order = ex.create_order(order).await.or_else(|e| {
+        println!("create order error: {:?}", e);
+        Err(e)
+    });
+    println!("order: {:?}", order);
 }

@@ -103,8 +103,9 @@ impl BinanceMargin {
             secret: props.secret.clone(),
         })
     }
-    pub async fn connect(&mut self) -> CommonResult<()> {
-        Ok(self.exchange_base.connect().await?)
+    async fn connect(&mut self) -> CommonResult<()> {
+        self.exchange_base.connect().await?;
+        Ok(())
     }
 
     fn auth(&self, request: &String) -> Result<String> {
@@ -156,6 +157,9 @@ impl Exchange for BinanceMargin {
     }
 
     async fn watch_order_book(&mut self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+        if !self.exchange_base.is_connected {
+            self.exchange_base.connect().await?;
+        }
         let mut sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
