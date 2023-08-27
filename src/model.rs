@@ -122,12 +122,14 @@ pub struct Market {
 
 impl Display for Market {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}.{}", self.base, self.quote, self.market_type)?;
-        if self.expiry.is_some() {
-            let delivery = timestamp_format(self.expiry.unwrap(), "%Y%m%d")?;
-            write!(f, ".{}", delivery)?;
-        } else if self.market_type == MarketType::Swap {
-            write!(f, ".SWAP")?;
+        write!(f, "{}/{}", self.base, self.quote)?;
+        if self.market_type == MarketType::Future {
+            let settle = self.settle.as_ref().unwrap_or(&self.quote);
+            write!(f, ":{}", settle)?;
+        }
+        if self.market_type != MarketType::Swap && self.expiry.is_some() {
+            let delivery = timestamp_format(self.expiry.unwrap(), "%y%m%d")?;
+            write!(f, "-{}", delivery)?;
         }
         Ok(())
     }
