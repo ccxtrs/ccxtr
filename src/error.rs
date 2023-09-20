@@ -1,7 +1,6 @@
 use std::num::ParseFloatError;
 use std::sync::PoisonError;
 
-use futures::channel::mpsc;
 use hmac::digest::InvalidLength;
 use thiserror::Error;
 
@@ -200,6 +199,8 @@ pub enum WatchError {
     WebsocketError(String),
     #[error("symbol not found {0}")]
     SymbolNotFound(String),
+    #[error("not connected")]
+    NotConnected,
     #[error("unknown error {0}")]
     UnknownError(String),
 }
@@ -213,8 +214,8 @@ impl From<Error> for WatchError {
     }
 }
 
-impl From<mpsc::SendError> for WatchError {
-    fn from(e: mpsc::SendError) -> Self {
+impl From<flume::SendError<String>> for WatchError {
+    fn from(e: flume::SendError<String>) -> Self {
         WatchError::WebsocketError(format!("{}", e))
     }
 }

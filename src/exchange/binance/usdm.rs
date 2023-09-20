@@ -2,8 +2,6 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::channel::mpsc::Receiver;
-use futures::SinkExt;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -92,9 +90,6 @@ impl BinanceUsdm {
             secret: props.secret.clone(),
         })
     }
-    pub async fn connect(&mut self) -> CommonResult<()> {
-        Ok(self.exchange_base.connect().await?)
-    }
 
     fn auth(&self, request: &String) -> Result<String> {
         if self.api_key.is_none() || self.secret.is_none() {
@@ -108,16 +103,30 @@ impl BinanceUsdm {
 
 #[async_trait]
 impl Exchange for BinanceUsdm {
-    async fn load_markets(&mut self) -> LoadMarketResult<&Vec<Market>> {
+    async fn connect(&mut self) -> CommonResult<()> {
+        Ok(self.exchange_base.connect().await?)
+    }
+    async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
-            self.fetch_markets().await?;
+            let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
+            self.exchange_base.unifier.reset();
+            let mut markets = vec![];
+            for s in result.symbols {
+                if s.symbol.is_none() {
+                    continue;
+                }
+                let market: Result<Market> = (&s).into();
+                let market = market?;
+                self.exchange_base.unifier.insert_market_symbol_id(&market, &(s.symbol.unwrap()));
+                markets.push(market);
+            }
+            self.exchange_base.markets = markets;
         }
-        Ok(&self.exchange_base.markets)
+        Ok(self.exchange_base.markets.clone())
     }
 
-    async fn fetch_markets(&mut self) -> FetchMarketResult<&Vec<Market>> {
+    async fn fetch_markets(&self) -> FetchMarketResult<Vec<Market>> {
         let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
-        self.exchange_base.unifier.reset();
         let mut markets = vec![];
         for s in result.symbols {
             if s.symbol.is_none() {
@@ -125,16 +134,14 @@ impl Exchange for BinanceUsdm {
             }
             let market: Result<Market> = (&s).into();
             let market = market?;
-            self.exchange_base.unifier.insert_market_symbol_id(&market, &(s.symbol.unwrap()));
             markets.push(market);
         }
-        self.exchange_base.markets = markets;
-        Ok(&self.exchange_base.markets)
+        Ok(markets)
     }
 
-    async fn watch_order_book(&mut self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
         if !self.exchange_base.is_connected {
-            self.exchange_base.connect().await?;
+            return Err(WatchError::NotConnected);
         }
         let mut sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
@@ -152,10 +159,9 @@ impl Exchange for BinanceUsdm {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        sender.send(stream_name).await?;
+        sender.send_async(stream_name).await?;
 
-        Ok(self.exchange_base.order_book_stream.take()
-            .ok_or(Error::WebsocketError("no receiver".into()))?)
+        Ok(self.exchange_base.order_book_stream.clone())
     }
 
     async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {

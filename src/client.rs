@@ -1,9 +1,8 @@
 use std::fmt::Debug;
 use std::io;
+use futures_util::stream::{SplitStream, Map};
+use futures_util::{SinkExt, StreamExt};
 
-use futures::{SinkExt, StreamExt};
-use futures::channel::mpsc::Sender;
-use futures::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpStream;
@@ -23,7 +22,7 @@ type MappedReceiveStream = Map<ReceiveStream, MapFunc>;
 pub(crate) struct WsClient {
     endpoint: String,
 
-    sender: Option<Sender<String>>,
+    sender: Option<flume::Sender<String>>,
     receiver: Option<MappedReceiveStream>,
 }
 
@@ -49,36 +48,37 @@ impl WsClient {
 
     pub(crate) async fn connect(&mut self) -> Result<&Self> {
         let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
-        let (mut tx, rx) = stream.split();
-        let (send_ch, mut recv_ch) = futures::channel::mpsc::channel::<String>(MAX_BUFFER);
-        let sender = send_ch.clone();
-        tokio::spawn(async move {
-            loop {
-                let x = recv_ch.next().await;
-                match x {
-                    Some(x) => {
-                        let _ = tx.send(Message::Text(x)).await;
-                    }
-                    None => {
-                        break;
+        let (mut ws_tx, ws_rx) = stream.split();
+        let (req_tx, req_rx) = flume::unbounded::<String>();
+        tokio::spawn({
+            async move {
+                loop {
+                    let req = req_rx.recv_async().await;
+                    match req {
+                        Ok(x) => {
+                            let _ = ws_tx.send(Message::Text(x)).await;
+                        }
+                        _ => {
+                            break;
+                        }
                     }
                 }
             }
         });
 
-        let rx: MappedReceiveStream = rx.map(|x| {
+        let rx: MappedReceiveStream = ws_rx.map(|x| {
             match x {
                 Ok(x) => Ok(x.into_data()),
                 Err(e) => Err(Error::WebsocketError(format!("{}", e)))
             }
         });
 
-        self.sender = Some(sender);
+        self.sender = Some(req_tx);
         self.receiver = Some(rx);
         Ok(self)
     }
 
-    pub(crate) fn sender(&self) -> Option<Sender<String>> {
+    pub(crate) fn sender(&self) -> Option<flume::Sender<String>> {
         self.sender.clone()
     }
 
@@ -185,8 +185,7 @@ impl HttpClientBuilder {
 
 #[cfg(test)]
 mod test {
-    use futures::prelude::*;
-
+    use tokio_stream::StreamExt;
     use crate::client::WsClient;
 
     #[tokio::test]
@@ -195,13 +194,14 @@ mod test {
         client.connect().await.unwrap();
         let sender = client.sender();
         let mut sender = sender.unwrap();
-        sender.send("test".to_string()).await.unwrap();
-        sender.send("test2".to_string()).await.unwrap();
+        sender.send_async("test".to_string()).await.unwrap();
+        sender.send_async("test2".to_string()).await.unwrap();
 
         let mut receiver = client.receiver();
-        let msg = receiver.as_mut().unwrap().next().await.unwrap();
+        let receiver = receiver.as_mut().unwrap();
+        let msg = receiver.next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
-        let msg = receiver.as_mut().unwrap().next().await.unwrap();
+        let msg = receiver.next().await.unwrap();
         println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
     }
 }

@@ -203,7 +203,7 @@ impl OrderBookSynchronizer {
         }
     }
 
-    pub(crate) fn init(&mut self, markets: Vec<Market>) {
+    pub(crate) fn init(&mut self, markets: &Vec<Market>) {
         for market in markets {
             self.market_order_books.insert(market.clone(), Mutex::new(OrderBookAggregator::new()));
         }

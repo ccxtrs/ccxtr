@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::channel::mpsc::Receiver;
-use futures::SinkExt;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -131,36 +129,41 @@ impl BinanceMargin {
 
 #[async_trait]
 impl Exchange for BinanceMargin {
-    async fn load_markets(&mut self) -> LoadMarketResult<&Vec<Market>> {
+    async fn connect(&mut self) -> CommonResult<()> {
+        Ok(self.exchange_base.connect().await?)
+    }
+    async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
-            self.fetch_markets().await?;
+            self.exchange_base.unifier.reset();
+            let result: FetchMarketsResponse = self.exchange_base.http_client.get("/api/v3/exchangeInfo", EMPTY_QUERY).await?;
+            let mut markets = vec![];
+            for s in result.symbols {
+                if let Ok(market) = (&s).into() {
+                    self.exchange_base.unifier.insert_market_symbol_id(&market, &(s.symbol));
+                    markets.push(market);
+                }
+            }
+            self.exchange_base.markets = markets;
         }
-        Ok(&self.exchange_base.markets)
+        Ok(self.exchange_base.markets.clone())
     }
 
-    async fn fetch_markets(&mut self) -> FetchMarketResult<&Vec<Market>> {
+    async fn fetch_markets(&self) -> FetchMarketResult<Vec<Market>> {
         let result: FetchMarketsResponse = self.exchange_base.http_client.get("/api/v3/exchangeInfo", EMPTY_QUERY).await?;
-        self.exchange_base.unifier.reset();
         let mut markets = vec![];
         for s in result.symbols {
             let market: Result<Market> = (&s).into();
-            if let Err(Error::InvalidMarket) = market {
-                continue;
-            }
-
             let market = market?;
-            self.exchange_base.unifier.insert_market_symbol_id(&market, &(s.symbol));
             markets.push(market);
         }
-        self.exchange_base.markets = markets;
-        Ok(&self.exchange_base.markets)
+        Ok(markets)
     }
 
-    async fn watch_order_book(&mut self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
         if !self.exchange_base.is_connected {
-            self.exchange_base.connect().await?;
+            return Err(WatchError::NotConnected);
         }
-        let mut sender = self.exchange_base.ws_client.sender()
+        let sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
         let mut symbol_ids: Vec<String> = Vec::new();
@@ -176,7 +179,7 @@ impl Exchange for BinanceMargin {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        sender.send(stream_name).await?;
+        sender.send_async(stream_name).await?;
 
         // todo check subscription result
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -194,8 +197,7 @@ impl Exchange for BinanceMargin {
             self.exchange_base.order_book_synchronizer.read().unwrap().snapshot(m.clone(), order_book)?;
         }
 
-        Ok(self.exchange_base.order_book_stream.take()
-            .ok_or(Error::WebsocketError("no receiver".into()))?)
+        Ok(self.exchange_base.order_book_stream.clone())
     }
 
     async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {

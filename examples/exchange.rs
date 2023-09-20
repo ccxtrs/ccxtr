@@ -1,8 +1,4 @@
 use std::sync::{Arc, atomic};
-use std::thread::sleep;
-
-use futures::StreamExt;
-
 use ccxtr::{BinanceMargin, OrderBookError, OrderBookResult, PropertiesBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
@@ -13,7 +9,12 @@ async fn main() {
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = BinanceMargin::new(&props).unwrap();
+
     let markets = ex.load_markets().await.unwrap();
+    if let Err(err) = ex.connect().await {
+        println!("failed to connect: {:?}", err);
+        return;
+    }
     let mut subscriptions = Vec::new();
     let mut order_market = None;
     for m in markets {
@@ -31,14 +32,19 @@ async fn main() {
     // create_order(&mut ex, &order_market.unwrap()).await;
     println!("subscriptions: {:?}", subscriptions.len());
     let selections = Arc::new(subscriptions[0..10].to_vec());
-    let mut select = Arc::new(atomic::AtomicI64::new(0));
-    let mut stream = ex.watch_order_book(&subscriptions).await.unwrap();
+    let select = Arc::new(atomic::AtomicI64::new(0));
+    let stream = ex.watch_order_book(&subscriptions).await;
+    if stream.is_err() {
+        println!("failed to watch order book: {:?}", stream.err().unwrap());
+        return;
+    }
+    let stream = stream.unwrap();
     tokio::spawn({
         let select = select.clone();
         let selections = selections.clone();
         async move {
             println!("start watching order book");
-            while let Some(result) = stream.next().await {
+            while let Ok(result) = stream.recv_async().await {
                 match result {
                     Ok(order_book) => {
                         if order_book.market == selections[select.load(atomic::Ordering::Relaxed) as usize] {

@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use futures::channel::mpsc;
-use futures::StreamExt;
+use tokio_stream::StreamExt;
 
 pub use binance::BinanceMargin;
 pub use binance::BinanceUsdm;
@@ -65,8 +64,8 @@ pub struct ExchangeBase {
 
     stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>,
 
-    order_book_stream_sender: mpsc::Sender<OrderBookResult<OrderBook>>,
-    order_book_stream: Option<mpsc::Receiver<OrderBookResult<OrderBook>>>,
+    order_book_stream_sender: flume::Sender<OrderBookResult<OrderBook>>,
+    order_book_stream: flume::Receiver<OrderBookResult<OrderBook>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -95,7 +94,7 @@ impl ExchangeBase {
             .error_parser(properties.error_parser)
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
-        let (order_book_stream_sender, order_book_stream) = mpsc::channel::<OrderBookResult<OrderBook>>(MAX_BUFFER);
+        let (order_book_stream_sender, order_book_stream) = flume::unbounded::<OrderBookResult<OrderBook>>();
 
         Ok(Self {
             markets: vec![],
@@ -104,7 +103,7 @@ impl ExchangeBase {
             http_client,
             stream_parser: properties.stream_parser.unwrap_or(|_, _, _| None),
             order_book_stream_sender,
-            order_book_stream: Some(order_book_stream),
+            order_book_stream,
             order_book_synchronizer: Arc::new(RwLock::new(OrderBookSynchronizer::new())),
             is_connected: false,
         })
@@ -114,10 +113,10 @@ impl ExchangeBase {
         if self.markets.is_empty() {
             return Err(Error::MissingMarkets);
         }
-        self.order_book_synchronizer.write()?.init(self.markets.clone());
+        self.order_book_synchronizer.write()?.init(&self.markets);
         self.ws_client.connect().await?;
         let stream_parser = self.stream_parser;
-        let mut order_book_stream_sender = self.order_book_stream_sender.clone();
+        let order_book_stream_sender = self.order_book_stream_sender.clone();
         let mut receiver = self.ws_client.receiver();
         let order_book_synchronizer = self.order_book_synchronizer.clone();
 
@@ -152,11 +151,19 @@ impl ExchangeBase {
 
 #[async_trait]
 pub trait Exchange {
-    // public
-    async fn load_markets(&mut self) -> LoadMarketResult<&Vec<Market>> {
+    async fn connect(&mut self) -> CommonResult<()> {
+        Err(CommonError::NotImplemented)
+    }
+
+    /// Load all markets from the exchange and store them in the internal cache.
+    ///
+    /// It also updates the internal unifier which is used to convert market to symbol id and vice
+    /// versa.
+    async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         Err(LoadMarketError::NotImplemented)
     }
-    async fn fetch_markets(&mut self) -> FetchMarketResult<&Vec<Market>> {
+
+    async fn fetch_markets(&self) -> FetchMarketResult<Vec<Market>> {
         Err(FetchMarketError::NotImplemented)
     }
     async fn fetch_currencies(&self) -> CommonResult<Vec<Currency>> {
@@ -187,7 +194,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&mut self, _: &Vec<Market>) -> WatchResult<mpsc::Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, _: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
         Err(WatchError::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> WatchResult<()> {

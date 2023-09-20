@@ -21,6 +21,5 @@ pub use exchange::Properties;
 pub use exchange::BinanceUsdm;
 pub use exchange::BinanceMargin;
 
-pub use futures::StreamExt;
-pub use futures::channel::mpsc::Receiver;
-
+pub use flume::Receiver;
+pub use tokio_stream::StreamExt;
