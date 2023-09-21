@@ -6,6 +6,7 @@ mod util;
 pub mod model;
 
 
+pub use crate::error::{ConnectResult, ConnectError};
 pub use crate::error::{FetchMarketResult, FetchMarketError};
 pub use crate::error::{LoadMarketResult, LoadMarketError};
 pub use crate::error::{CommonResult, CommonError};
