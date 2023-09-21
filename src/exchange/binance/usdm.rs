@@ -6,9 +6,9 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
+use crate::{CommonError, CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
 use crate::client::EMPTY_QUERY;
-use crate::error::{Error, LoadMarketResult, OrderBookError, Result, WatchError};
+use crate::error::{ConnectError, ConnectResult, Error, LoadMarketResult, OrderBookError, Result, WatchError};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
@@ -104,8 +104,10 @@ impl BinanceUsdm {
 
 #[async_trait]
 impl Exchange for BinanceUsdm {
-    async fn connect(&mut self) -> CommonResult<()> {
-        Ok(self.exchange_base.connect().await?)
+    async fn connect(&mut self) -> ConnectResult<()> {
+        self.load_markets().await?;
+        self.exchange_base.connect().await?;
+        Ok(())
     }
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
@@ -162,7 +164,7 @@ impl Exchange for BinanceUsdm {
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
         sender.send_async(stream_name).await?;
 
-        Ok(self.exchange_base.order_book_stream.clone())
+        Ok(self.exchange_base.order_book_stream_rx.clone())
     }
 
     async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {

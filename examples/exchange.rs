@@ -10,11 +10,8 @@ async fn main() {
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = BinanceMargin::new(&props).unwrap();
 
+    ex.connect().await.expect("failed to connect");
     let markets = ex.load_markets().await.unwrap();
-    if let Err(err) = ex.connect().await {
-        println!("failed to connect: {:?}", err);
-        return;
-    }
     let mut subscriptions = Vec::new();
     let mut order_market = None;
     for m in markets {

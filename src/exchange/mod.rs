@@ -11,7 +11,7 @@ pub use property::PropertiesBuilder;
 
 use crate::{FetchMarketError, FetchMarketResult};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::error::{CommonError, CommonResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
+use crate::error::{CommonError, CommonResult, ConnectError, ConnectResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
 use crate::model::{Currency, Market, Order, OrderBook, Trade};
 use crate::util::channel::{Receiver, Sender};
 use crate::util::OrderBookSynchronizer;
@@ -65,8 +65,8 @@ pub struct ExchangeBase {
 
     stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>,
 
-    order_book_stream_sender: Sender<OrderBookResult<OrderBook>>,
-    order_book_stream: Receiver<OrderBookResult<OrderBook>>,
+    order_book_stream_tx: Sender<OrderBookResult<OrderBook>>,
+    order_book_stream_rx: Receiver<OrderBookResult<OrderBook>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -96,16 +96,16 @@ impl ExchangeBase {
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
         let (order_book_stream_sender, order_book_stream) = flume::unbounded::<OrderBookResult<OrderBook>>();
-        let order_book_stream_sender = Sender::new(order_book_stream_sender);
-        let order_book_stream = Receiver::new(order_book_stream);
+        let order_book_stream_tx = Sender::new(order_book_stream_sender);
+        let order_book_stream_rx = Receiver::new(order_book_stream);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
             ws_client,
             http_client,
             stream_parser: properties.stream_parser.unwrap_or(|_, _, _| None),
-            order_book_stream_sender,
-            order_book_stream,
+            order_book_stream_tx,
+            order_book_stream_rx,
             order_book_synchronizer: Arc::new(RwLock::new(OrderBookSynchronizer::new())),
             is_connected: false,
         })
@@ -117,16 +117,16 @@ impl ExchangeBase {
         }
         self.order_book_synchronizer.write()?.init(&self.markets);
         self.ws_client.connect().await?;
+        let mut ws_rx = self.ws_client.receiver();
         let stream_parser = self.stream_parser;
-        let order_book_stream_sender = self.order_book_stream_sender.clone();
-        let mut receiver = self.ws_client.receiver();
+        let order_book_stream_tx = self.order_book_stream_tx.clone();
         let order_book_synchronizer = self.order_book_synchronizer.clone();
 
         let unifier = self.unifier.clone();
         tokio::spawn({
             async move {
                 loop {
-                    let message = receiver.as_mut().unwrap().next().await;
+                    let message = ws_rx.as_mut().unwrap().next().await;
                     match message {
                         Some(message) => {
                             match stream_parser(message.unwrap(), &unifier, &order_book_synchronizer) {
@@ -134,7 +134,7 @@ impl ExchangeBase {
                                     continue;
                                 }
                                 Some(StreamItem::OrderBook(order_book)) => {
-                                    let _ = order_book_stream_sender.send(order_book).await;
+                                    let _ = order_book_stream_tx.send(order_book).await;
                                 }
                             }
                         }
@@ -153,8 +153,8 @@ impl ExchangeBase {
 
 #[async_trait]
 pub trait Exchange {
-    async fn connect(&mut self) -> CommonResult<()> {
-        Err(CommonError::NotImplemented)
+    async fn connect(&mut self) -> ConnectResult<()> {
+        Err(ConnectError::NotImplemented)
     }
 
     /// Load all markets from the exchange and store them in the internal cache.

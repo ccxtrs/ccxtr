@@ -8,7 +8,7 @@ use sha2::Sha256;
 
 use crate::{CommonResult, CreateOrderResult, Exchange, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, PropertiesBuilder, WatchError, WatchResult};
 use crate::client::{EMPTY_BODY, EMPTY_QUERY};
-use crate::error::{Error, Result};
+use crate::error::{ConnectError, ConnectResult, Error, Result};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::exchange::property::Properties;
@@ -130,8 +130,10 @@ impl BinanceMargin {
 
 #[async_trait]
 impl Exchange for BinanceMargin {
-    async fn connect(&mut self) -> CommonResult<()> {
-        Ok(self.exchange_base.connect().await?)
+    async fn connect(&mut self) -> ConnectResult<()> {
+        self.load_markets().await?;
+        self.exchange_base.connect().await?;
+        Ok(())
     }
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
@@ -164,7 +166,7 @@ impl Exchange for BinanceMargin {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }
-        let sender = self.exchange_base.ws_client.sender()
+        let tx = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
         let mut symbol_ids: Vec<String> = Vec::new();
@@ -180,7 +182,7 @@ impl Exchange for BinanceMargin {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        sender.send_async(stream_name).await?;
+        tx.send_async(stream_name).await?;
 
         // todo check subscription result
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -198,7 +200,7 @@ impl Exchange for BinanceMargin {
             self.exchange_base.order_book_synchronizer.read().unwrap().snapshot(m.clone(), order_book)?;
         }
 
-        Ok(self.exchange_base.order_book_stream.clone())
+        Ok(self.exchange_base.order_book_stream_rx.clone())
     }
 
     async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {

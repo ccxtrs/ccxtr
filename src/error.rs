@@ -78,6 +78,8 @@ pub type CommonResult<T> = std::result::Result<T, CommonError>;
 pub enum CommonError {
     #[error("not implemented")]
     NotImplemented,
+    #[error("connection error {0}")]
+    ConnectionError(String),
     #[error("lock error {0}")]
     LockError(String),
     #[error("deserialization error for json body {0}")]
@@ -155,6 +157,28 @@ impl From<Error> for CommonError {
         }
     }
 }
+
+pub type ConnectResult<T> = std::result::Result<T, ConnectError>;
+
+#[derive(Error, Debug)]
+pub enum ConnectError {
+    #[error("not implemented")]
+    NotImplemented,
+    #[error("load market error {0}")]
+    LoadMarketError(#[from] LoadMarketError),
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
+
+impl From<Error> for ConnectError {
+    fn from(err: Error) -> Self {
+        match err {
+            _ => ConnectError::UnknownError(format!("{:?}", err)),
+        }
+    }
+}
+
 
 
 pub type OrderBookResult<T> = std::result::Result<T, OrderBookError>;
