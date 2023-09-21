@@ -214,8 +214,15 @@ impl From<Error> for WatchError {
     }
 }
 
-impl From<flume::SendError<String>> for WatchError {
-    fn from(e: flume::SendError<String>) -> Self {
+
+impl From<flume::RecvError> for WatchError {
+    fn from(e: flume::RecvError) -> Self {
+        WatchError::UnknownError(e.to_string())
+    }
+}
+
+impl<T> From<flume::SendError<T>> for WatchError {
+    fn from(e: flume::SendError<T>) -> Self {
         WatchError::WebsocketError(format!("{}", e))
     }
 }

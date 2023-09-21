@@ -14,6 +14,7 @@ use crate::exchange::binance::util;
 use crate::exchange::property::Properties;
 use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, Precision, Range, TimeInForce};
 use crate::util::{into_precision, OrderBookDiff};
+use crate::util::channel::Receiver;
 
 #[derive(Serialize, Deserialize)]
 struct ErrorResponse {
@@ -159,7 +160,7 @@ impl Exchange for BinanceMargin {
         Ok(markets)
     }
 
-    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }

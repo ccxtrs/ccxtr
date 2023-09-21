@@ -13,6 +13,7 @@ use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
 use crate::model::{MarketLimit, Precision, Range};
+use crate::util::channel::Receiver;
 use crate::util::into_precision;
 
 pub struct BinanceUsdm {
@@ -139,7 +140,7 @@ impl Exchange for BinanceUsdm {
         Ok(markets)
     }
 
-    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }

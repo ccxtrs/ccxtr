@@ -13,6 +13,7 @@ use crate::{FetchMarketError, FetchMarketResult};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
 use crate::error::{CommonError, CommonResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
 use crate::model::{Currency, Market, Order, OrderBook, Trade};
+use crate::util::channel::{Receiver, Sender};
 use crate::util::OrderBookSynchronizer;
 
 mod binance;
@@ -64,8 +65,8 @@ pub struct ExchangeBase {
 
     stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>,
 
-    order_book_stream_sender: flume::Sender<OrderBookResult<OrderBook>>,
-    order_book_stream: flume::Receiver<OrderBookResult<OrderBook>>,
+    order_book_stream_sender: Sender<OrderBookResult<OrderBook>>,
+    order_book_stream: Receiver<OrderBookResult<OrderBook>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -95,7 +96,8 @@ impl ExchangeBase {
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
         let (order_book_stream_sender, order_book_stream) = flume::unbounded::<OrderBookResult<OrderBook>>();
-
+        let order_book_stream_sender = Sender::new(order_book_stream_sender);
+        let order_book_stream = Receiver::new(order_book_stream);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
@@ -132,7 +134,7 @@ impl ExchangeBase {
                                     continue;
                                 }
                                 Some(StreamItem::OrderBook(order_book)) => {
-                                    let _ = order_book_stream_sender.try_send(order_book);
+                                    let _ = order_book_stream_sender.send(order_book).await;
                                 }
                             }
                         }
@@ -194,7 +196,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&self, _: &Vec<Market>) -> WatchResult<flume::Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, _: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
         Err(WatchError::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> WatchResult<()> {

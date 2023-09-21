@@ -10,8 +10,10 @@ use collections::SortedMap;
 use crate::error::{Error, Result};
 use crate::model::{Market, OrderBook, OrderBookUnit};
 use crate::util::collections::SortedMapOrder;
+use crate::{WatchError, WatchResult};
 
 mod collections;
+pub(crate) mod channel;
 
 pub(crate) fn into_precision(s: String) -> Result<isize> {
     let d = f64::from_str(&s)?;
@@ -283,3 +285,4 @@ mod test_order_book {
         assert_eq!(order_book.asks[0].price, 9.0);
     }
 }
+

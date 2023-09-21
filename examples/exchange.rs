@@ -44,7 +44,7 @@ async fn main() {
         let selections = selections.clone();
         async move {
             println!("start watching order book");
-            while let Ok(result) = stream.recv_async().await {
+            while let Ok(result) = stream.receive().await {
                 match result {
                     Ok(order_book) => {
                         if order_book.market == selections[select.load(atomic::Ordering::Relaxed) as usize] {
