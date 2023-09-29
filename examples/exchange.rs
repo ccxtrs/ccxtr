@@ -1,5 +1,5 @@
 use std::sync::{Arc, atomic};
-use ccxtr::{BinanceMargin, OrderBookError, OrderBookResult, PropertiesBuilder};
+use ccxtr::{BinanceMargin, ConnectError, OrderBookError, OrderBookResult, PropertiesBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
 
@@ -10,7 +10,8 @@ async fn main() {
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = BinanceMargin::new(&props).unwrap();
 
-    ex.connect().await.expect("failed to connect");
+    let connect_result = ex.connect().await;
+    let connect_err: Option<ConnectError> = connect_result.err();
     let markets = ex.load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;

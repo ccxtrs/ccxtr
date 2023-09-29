@@ -146,7 +146,12 @@ impl Exchange for BinanceUsdm {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }
-        let mut sender = self.exchange_base.ws_client.sender()
+        
+        if markets.len() == 0 {
+            return Ok(self.exchange_base.order_book_stream_rx.clone())
+        }
+        
+        let sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
         let mut symbol_ids: Vec<String> = Vec::new();

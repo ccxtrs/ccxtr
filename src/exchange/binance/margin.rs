@@ -82,7 +82,7 @@ impl BinanceMargin {
                         let result = synchronizer.read().unwrap().append_and_get(market.clone(), diff);
                         if result.is_err() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid order book."), Some(market),
+                                format!("Invalid order book. error={:?}", result.expect_err("")), Some(market),
                             ))));
                         }
                         let book = result.unwrap();
@@ -166,6 +166,11 @@ impl Exchange for BinanceMargin {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }
+
+        if markets.len() == 0 {
+            return Ok(self.exchange_base.order_book_stream_rx.clone())
+        }
+
         let tx = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
