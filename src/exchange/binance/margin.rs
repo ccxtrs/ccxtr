@@ -13,7 +13,7 @@ use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
 use crate::exchange::property::Properties;
 use crate::model::{Market, MarketLimit, MarketType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, Precision, Range, TimeInForce};
-use crate::util::{into_precision, OrderBookDiff};
+use crate::util::{into_precision};
 use crate::util::channel::Receiver;
 
 #[derive(Serialize, Deserialize)]
@@ -50,7 +50,7 @@ impl BinanceMargin {
                     Err(_) => Error::DeserializeJsonBody(message),
                 }
             })
-            .stream_parser(|message, unifier, synchronizer| {
+            .stream_parser(|message, unifier| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription result
                     return None;
@@ -74,42 +74,12 @@ impl BinanceMargin {
                 }
 
 
-                match common_message.event_type {
+                return match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
-                        let resp = WatchDiffOrderBookResponse::from(message);
-                        let market = unifier.get_market(&resp.symbol);
-                        if market.is_none() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Unknown market. symbol={}", resp.symbol), None,
-                            ))));
-                        }
-                        let market = market.unwrap();
-                        let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
-                        if bids.is_err() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid bid. bid={:?}", resp.bids), Some(market),
-                            ))));
-                        }
-                        let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
-                        if asks.is_err() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid ask. ask={:?}", resp.asks), Some(market),
-                            ))));
-                        }
-
-                        let diff = OrderBookDiff::new(resp.first_update_id, resp.final_update_id, bids.unwrap(), asks.unwrap(), Some(resp.event_time));
-                        let result = synchronizer.read().unwrap().append_and_get(market.clone(), diff);
-                        if let Err(Error::SynchronizationError) = result {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::SynchronizationError(market))));
-                        }
-                        let book = result.unwrap();
-                        if book.is_none() {
-                            return None;
-                        }
-                        let book = book.unwrap();
-                        Some(StreamItem::OrderBook(Ok(book)))
+                        // diff order book
+                        Some(StreamItem::OrderBook(Err(OrderBookError::NotImplemented)))
                     }
-                    _ => return None,
+                    _ => None,
                 }
             });
 

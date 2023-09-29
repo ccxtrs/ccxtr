@@ -2,7 +2,6 @@ use std::sync::{Arc, RwLock};
 
 use crate::error::Error;
 use crate::exchange::{StreamItem, Unifier};
-use crate::util::OrderBookSynchronizer;
 
 #[derive(Debug)]
 pub struct Properties {
@@ -11,7 +10,7 @@ pub struct Properties {
     pub(crate) api_key: Option<String>,
     pub(crate) secret: Option<String>,
     pub(crate) ws_endpoint: Option<String>,
-    pub(crate) stream_parser: Option<fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>>,
+    pub(crate) stream_parser: Option<fn(Vec<u8>, &Unifier) -> Option<StreamItem>>,
     pub(crate) error_parser: Option<fn(String) -> Error>,
 }
 
@@ -22,7 +21,7 @@ pub struct PropertiesBuilder {
     api_key: Option<String>,
     secret: Option<String>,
     ws_endpoint: Option<String>,
-    stream_parser: Option<fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>>,
+    stream_parser: Option<fn(Vec<u8>, &Unifier) -> Option<StreamItem>>,
     error_parser: Option<fn(String) -> Error>,
 }
 
@@ -56,7 +55,7 @@ impl PropertiesBuilder {
         self
     }
 
-    pub(crate) fn stream_parser(mut self, stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>) -> Self {
+    pub(crate) fn stream_parser(mut self, stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>) -> Self {
         self.stream_parser = Some(stream_parser);
         self
     }

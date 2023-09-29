@@ -45,7 +45,7 @@ impl BinanceUsdm {
                     Err(_) => Error::DeserializeJsonBody(message),
                 }
             })
-            .stream_parser(|message, unifier, _| {
+            .stream_parser(|message, unifier| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription response
                     return None;
@@ -146,11 +146,11 @@ impl Exchange for BinanceUsdm {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }
-        
+
         if markets.len() == 0 {
             return Ok(self.exchange_base.order_book_stream_rx.clone())
         }
-        
+
         let sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 

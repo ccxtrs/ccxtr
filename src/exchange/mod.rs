@@ -14,7 +14,6 @@ use crate::client::{HttpClient, HttpClientBuilder, WsClient};
 use crate::error::{CommonError, CommonResult, ConnectError, ConnectResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
 use crate::model::{Currency, Market, Order, OrderBook, Trade};
 use crate::util::channel::{Receiver, Sender};
-use crate::util::OrderBookSynchronizer;
 
 mod binance;
 mod property;
@@ -63,7 +62,7 @@ pub struct ExchangeBase {
     pub(super) ws_client: WsClient,
     pub(super) is_connected: bool,
 
-    stream_parser: fn(Vec<u8>, &Unifier, &Arc<RwLock<OrderBookSynchronizer>>) -> Option<StreamItem>,
+    stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>,
 
     order_book_stream_tx: Sender<OrderBookResult<OrderBook>>,
     order_book_stream_rx: Receiver<OrderBookResult<OrderBook>>,
@@ -71,7 +70,6 @@ pub struct ExchangeBase {
     pub(super) markets: Vec<Market>,
 
     pub(super) unifier: Unifier,
-    pub(super) order_book_synchronizer: Arc<RwLock<OrderBookSynchronizer>>,
 }
 
 const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
@@ -103,10 +101,9 @@ impl ExchangeBase {
             unifier: Unifier::new(),
             ws_client,
             http_client,
-            stream_parser: properties.stream_parser.unwrap_or(|_, _, _| None),
+            stream_parser: properties.stream_parser.unwrap_or(|_, _| None),
             order_book_stream_tx,
             order_book_stream_rx,
-            order_book_synchronizer: Arc::new(RwLock::new(OrderBookSynchronizer::new())),
             is_connected: false,
         })
     }
@@ -115,12 +112,10 @@ impl ExchangeBase {
         if self.markets.is_empty() {
             return Err(Error::MissingMarkets);
         }
-        self.order_book_synchronizer.write()?.init(&self.markets);
         self.ws_client.connect().await?;
         let mut ws_rx = self.ws_client.receiver();
         let stream_parser = self.stream_parser;
         let order_book_stream_tx = self.order_book_stream_tx.clone();
-        let order_book_synchronizer = self.order_book_synchronizer.clone();
 
         let unifier = self.unifier.clone();
         tokio::spawn({
@@ -129,7 +124,7 @@ impl ExchangeBase {
                     let message = ws_rx.as_mut().unwrap().next().await;
                     match message {
                         Some(message) => {
-                            match stream_parser(message.unwrap(), &unifier, &order_book_synchronizer) {
+                            match stream_parser(message.unwrap(), &unifier) {
                                 None => {
                                     continue;
                                 }
