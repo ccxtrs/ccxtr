@@ -1,5 +1,6 @@
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
+use hmac::digest::typenum::Or;
 
 use serde::{Deserialize, Serialize};
 
@@ -563,6 +564,15 @@ pub struct OrderBookUnit {
 impl Into<(f64, f64)> for OrderBookUnit {
     fn into(self) -> (f64, f64) {
         (self.price, self.quantity)
+    }
+}
+
+impl From<(f64, f64)> for OrderBookUnit {
+    fn from(value: (f64, f64)) -> Self {
+        Self {
+            price: value.0,
+            quantity: value.1,
+        }
     }
 }
 

@@ -8,11 +8,10 @@ async fn main() {
     let api_key = std::env::var("API_KEY").unwrap();
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
-    let mut ex = BinanceMargin::new(&props).unwrap();
+    let mut ex = Arc::new(BinanceMargin::new(&props).unwrap());
 
-    let connect_result = ex.connect().await;
-    let connect_err: Option<ConnectError> = connect_result.err();
-    let markets = ex.load_markets().await.unwrap();
+    Arc::get_mut(&mut ex).unwrap().connect().await.unwrap();
+    let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;
     for m in markets {
@@ -28,8 +27,8 @@ async fn main() {
     }
 
     // create_order(&mut ex, &order_market.unwrap()).await;
+    let subscriptions = Arc::new(subscriptions[0..10].to_vec());
     println!("subscriptions: {:?}", subscriptions.len());
-    let selections = Arc::new(subscriptions[0..10].to_vec());
     let select = Arc::new(atomic::AtomicI64::new(0));
     let stream = ex.watch_order_book(&subscriptions).await;
     if stream.is_err() {
@@ -39,7 +38,7 @@ async fn main() {
     let stream = stream.unwrap();
     tokio::spawn({
         let select = select.clone();
-        let selections = selections.clone();
+        let selections = subscriptions.clone();
         async move {
             println!("start watching order book");
             while let Ok(result) = stream.receive().await {
@@ -55,9 +54,12 @@ async fn main() {
                             );
                         }
                     }
+                    Err(OrderBookError::SynchronizationError(m)) => {
+                        println!("synchronization error: {:?}", m);
+                        ex.watch_order_book(&vec![m]).await.unwrap();
+                    }
                     Err(OrderBookError::InvalidOrderBook(_, m)) => {
-                        let market = m.unwrap();
-                        let _ = ex.watch_order_book(&vec![market.clone()]).await;
+                        panic!("invalid order book: {:?}", m);
                     }
                     _ => {}
                 }
@@ -77,19 +79,19 @@ async fn main() {
             "n" => {
                 let mut num = select.load(atomic::Ordering::Relaxed);
                 num += 1;
-                if num >= selections.len() as i64 {
+                if num >= subscriptions.len() as i64 {
                     num = 0;
                 }
-                println!("select: {}", selections[num as usize]);
+                println!("select: {}", subscriptions[num as usize]);
                 select.store(num, atomic::Ordering::Relaxed);
             }
             "p" => {
                 let mut num = select.load(atomic::Ordering::Relaxed);
                 num -= 1;
                 if num < 0 {
-                    num = selections.len() as i64 - 1;
+                    num = subscriptions.len() as i64 - 1;
                 }
-                println!("select: {}", selections[num as usize]);
+                println!("select: {}", subscriptions[num as usize]);
                 select.store(num, atomic::Ordering::Relaxed);
             }
             _ => {}

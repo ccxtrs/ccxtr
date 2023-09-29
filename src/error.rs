@@ -35,6 +35,7 @@ pub(crate) enum Error {
     CredentialsError(String),
 
     InvalidOrderBook(String),
+    SynchronizationError,
 
     InsufficientMargin(String),
 }
@@ -112,6 +113,8 @@ pub enum CommonError {
     #[error("credentials error {0}")]
     CredentialsError(String),
 
+
+
     #[error("invalid order book {0}")]
     InvalidOrderBook(String),
 
@@ -154,6 +157,7 @@ impl From<Error> for CommonError {
             Error::InvalidParameters(e) => CommonError::InvalidPrice(e),
             Error::InvalidMarket => CommonError::InvalidMarket,
             Error::InvalidTimestamp(ts) => CommonError::InvalidTimestamp(ts),
+            _ => CommonError::NotImplemented,
         }
     }
 }
@@ -193,6 +197,8 @@ pub enum OrderBookError {
     InvalidOrderBook(String, Option<Market>),
     #[error("parse error {0}")]
     ParseError(String),
+    #[error("synchronization error {0}")]
+    SynchronizationError(Market),
     #[error("unknown error {0}")]
     UnknownError(String),
 }

@@ -55,6 +55,25 @@ impl BinanceMargin {
                 if common_message.result.is_some() { // subscription result
                     return None;
                 }
+
+                // best bid and ask stream
+                if let (Some(order_book_update_id), Some(symbol), Some(bid_price), Some(bid_quantity), Some(ask_price), Some(ask_quantity)) = (common_message.order_book_update_id, common_message.symbol, common_message.bid_price, common_message.bid_quantity, common_message.ask_price, common_message.ask_quantity) {
+                    let market = unifier.get_market(&symbol);
+                    if market.is_none() {
+                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            format!("Unknown market. symbol={}", symbol), None,
+                        ))));
+                    }
+                    let market = market.unwrap();
+                    let bid_price = bid_price.parse::<f64>().unwrap();
+                    let bid_quantity = bid_quantity.parse::<f64>().unwrap();
+                    let ask_price = ask_price.parse::<f64>().unwrap();
+                    let ask_quantity = ask_quantity.parse::<f64>().unwrap();
+                    let book = OrderBook::new(vec![(bid_price, bid_quantity).into()], vec![(ask_price, ask_quantity).into()], market, None, Some(order_book_update_id));
+                    return Some(StreamItem::OrderBook(Ok(book)));
+                }
+
+
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         let resp = WatchDiffOrderBookResponse::from(message);
@@ -80,10 +99,8 @@ impl BinanceMargin {
 
                         let diff = OrderBookDiff::new(resp.first_update_id, resp.final_update_id, bids.unwrap(), asks.unwrap(), Some(resp.event_time));
                         let result = synchronizer.read().unwrap().append_and_get(market.clone(), diff);
-                        if result.is_err() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
-                                format!("Invalid order book. error={:?}", result.expect_err("")), Some(market),
-                            ))));
+                        if let Err(Error::SynchronizationError) = result {
+                            return Some(StreamItem::OrderBook(Err(OrderBookError::SynchronizationError(market))));
                         }
                         let book = result.unwrap();
                         if book.is_none() {
@@ -168,42 +185,26 @@ impl Exchange for BinanceMargin {
         }
 
         if markets.len() == 0 {
-            return Ok(self.exchange_base.order_book_stream_rx.clone())
+            return Ok(self.exchange_base.order_book_stream_rx.clone());
         }
 
-        let tx = self.exchange_base.ws_client.sender()
+        let sender = self.exchange_base.ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
 
         let mut symbol_ids: Vec<String> = Vec::new();
         for m in markets {
-            match self.exchange_base.unifier.get_symbol_id(m) {
+            match self.exchange_base.unifier.get_symbol_id(&m) {
                 Some(symbol_id) => symbol_ids.push(symbol_id),
                 None => return Err(WatchError::SymbolNotFound(format!("{:?}", m))),
             }
         }
         let params = symbol_ids.iter()
-            .map(|s| format!("\"{}@depth@100ms\"", s.to_lowercase()))
+            .map(|s| format!("\"{}@bookTicker\"", s.to_lowercase()))
             .collect::<Vec<String>>()
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        tx.send_async(stream_name).await?;
-
-        // todo check subscription result
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-
-        for m in markets.iter() {
-            let symbol = self.exchange_base.unifier.get_symbol_id(m).ok_or(Error::SymbolNotFound(m.to_string()))?;
-            let resp: GetOrderBookSnapshotResponse = self.exchange_base.http_client.get("/api/v3/depth", Some(&[("symbol", symbol), ("limit", "100".to_string())])).await?;
-            let order_book = OrderBook::new(
-                resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>().map_err(|_| WatchError::UnknownError(format!("{:?}", resp)))?,
-                resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>().map_err(|_| WatchError::UnknownError(format!("{:?}", resp)))?,
-                m.clone(),
-                None,
-                Some(resp.last_update_id),
-            );
-            self.exchange_base.order_book_synchronizer.read().unwrap().snapshot(m.clone(), order_book)?;
-        }
+        sender.send_async(stream_name).await?;
 
         Ok(self.exchange_base.order_book_stream_rx.clone())
     }
@@ -314,6 +315,20 @@ struct WatchCommonResponse {
     id: Option<i64>,
     #[serde(rename = "e")]
     event_type: Option<String>,
+
+    /// for best bid and ask stream
+    #[serde(rename = "u")]
+    order_book_update_id: Option<i64>,
+    #[serde(rename = "s")]
+    symbol: Option<String>,
+    #[serde(rename = "b")]
+    bid_price: Option<String>,
+    #[serde(rename = "B")]
+    bid_quantity: Option<String>,
+    #[serde(rename = "a")]
+    ask_price: Option<String>,
+    #[serde(rename = "A")]
+    ask_quantity: Option<String>,
 }
 
 impl TryFrom<Vec<u8>> for WatchCommonResponse {
@@ -324,6 +339,20 @@ impl TryFrom<Vec<u8>> for WatchCommonResponse {
     }
 }
 
+
+#[derive(Serialize, Deserialize)]
+struct WatchPartialOrderBookResponse {
+    #[serde(rename = "lastUpdateId")]
+    pub last_update_id: i64,
+    pub bids: Vec<Vec<String>>,
+    pub asks: Vec<Vec<String>>,
+}
+
+impl From<Vec<u8>> for WatchPartialOrderBookResponse {
+    fn from(message: Vec<u8>) -> Self {
+        serde_json::from_slice(&message).unwrap()
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 struct WatchDiffOrderBookResponse {

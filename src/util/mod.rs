@@ -157,8 +157,9 @@ impl OrderBookAggregator {
             return Ok(None);
         }
 
+
         if self.is_synchronized && diff.first_update_id != self.last_update_id + 1 {
-            return Err(Error::InvalidOrderBook(format!("invalid update id. diff first update id: {}, last update id: {}", diff.first_update_id, self.last_update_id)));
+            return Err(Error::SynchronizationError);
         }
 
         diff.bids.into_iter().for_each(|order_book_unit| {
@@ -207,6 +208,9 @@ impl OrderBookSynchronizer {
 
     pub(crate) fn init(&mut self, markets: &Vec<Market>) {
         for market in markets {
+            if self.market_order_books.contains_key(market) {
+                self.market_order_books.remove(market);
+            }
             self.market_order_books.insert(market.clone(), Mutex::new(OrderBookAggregator::new()));
         }
     }
@@ -215,6 +219,25 @@ impl OrderBookSynchronizer {
         self.market_order_books.get(&market).ok_or(Error::InvalidMarket)?
             .lock()?
             .snapshot(order_book)
+    }
+
+    pub(crate) fn ready(&self, market: &Market) -> bool {
+        let option = self.market_order_books.get(&market);
+        if option.is_none() {
+            return false;
+        }
+        let aggregator = option.unwrap();
+        let aggregator = aggregator.lock().unwrap();
+        if aggregator.is_synchronized {
+            return true;
+        }
+        if aggregator.buffer.is_none() {
+            return true;
+        }
+        if aggregator.buffer.as_ref().unwrap().len() > 0 {
+            return true;
+        }
+        false
     }
 
     pub(crate) fn append_and_get(&self, market: Market, diff: OrderBookDiff) -> Result<Option<OrderBook>> {
