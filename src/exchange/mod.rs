@@ -108,7 +108,7 @@ impl ExchangeBase {
         })
     }
 
-    async fn connect(&mut self) -> Result<()> {
+    pub(crate) async fn connect(&mut self) -> Result<()> {
         if self.markets.is_empty() {
             return Err(Error::MissingMarkets);
         }
@@ -148,10 +148,6 @@ impl ExchangeBase {
 
 #[async_trait]
 pub trait Exchange {
-    async fn connect(&mut self) -> ConnectResult<()> {
-        Err(ConnectError::NotImplemented)
-    }
-
     /// Load all markets from the exchange and store them in the internal cache.
     ///
     /// It also updates the internal unifier which is used to convert market to symbol id and vice

@@ -9,8 +9,6 @@ async fn main() {
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
     let mut ex = Arc::new(BinanceMargin::new(&props).unwrap());
-
-    Arc::get_mut(&mut ex).unwrap().connect().await.unwrap();
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;

@@ -117,11 +117,6 @@ impl BinanceMargin {
 
 #[async_trait]
 impl Exchange for BinanceMargin {
-    async fn connect(&mut self) -> ConnectResult<()> {
-        self.load_markets().await?;
-        self.exchange_base.connect().await?;
-        Ok(())
-    }
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
             self.exchange_base.unifier.reset();
@@ -134,6 +129,7 @@ impl Exchange for BinanceMargin {
                 }
             }
             self.exchange_base.markets = markets;
+            self.exchange_base.connect().await?;
         }
         Ok(self.exchange_base.markets.clone())
     }

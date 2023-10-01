@@ -104,11 +104,6 @@ impl BinanceUsdm {
 
 #[async_trait]
 impl Exchange for BinanceUsdm {
-    async fn connect(&mut self) -> ConnectResult<()> {
-        self.load_markets().await?;
-        self.exchange_base.connect().await?;
-        Ok(())
-    }
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
             let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
@@ -124,6 +119,7 @@ impl Exchange for BinanceUsdm {
                 markets.push(market);
             }
             self.exchange_base.markets = markets;
+            self.exchange_base.connect().await?;
         }
         Ok(self.exchange_base.markets.clone())
     }
