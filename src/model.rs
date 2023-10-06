@@ -274,9 +274,113 @@ pub struct Network {
 }
 
 
+
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    /// string, position id to reference the position, similar to an order id
+    pub id: Option<String>,
+
+    /// market
+    pub market: Market,
+
+    /// integer unix time since 1st Jan 1970 in milliseconds
+    pub timestamp: i64,
+
+    /// whether or not the position is isolated, as opposed to cross where margin is added automatically
+    pub is_isolated: bool,
+
+    /// whether or not the position is hedged, i.e. if trading in the opposite direction will close this position or make a new one
+    pub is_hedged: bool,
+
+    /// long or short
+    pub side: PositionSide,
+
+    /// number of contracts bought, aka the amount or size of the position
+    pub contracts: f64,
+
+    /// the size of one contract in quote units
+    pub contract_size: f64,
+
+    /// the average entry price of the position
+    pub entry_price: f64,
+
+    /// a price that is used for funding calculations
+    pub mark_price: f64,
+
+    /// the value of the position in the settlement currency
+    pub notional: f64,
+
+    /// the leverage of the position, related to how many contracts you can buy with a given amount of collateral
+    pub leverage: f64,
+
+    /// the maximum amount of collateral that can be lost, affected by pnl
+    pub collateral: f64,
+
+    /// the amount of collateral that is locked up in this position
+    pub initial_margin: f64,
+
+    /// the minimum amount of collateral needed to avoid being liquidated
+    pub maintenance_margin: f64,
+
+    /// the initialMargin as a percentage of the notional
+    pub initial_margin_percent: f64,
+
+    /// the maintenanceMargin as a percentage of the notional
+    pub maintenance_margin_percent: f64,
+
+    /// the difference between the market price and the entry price times the number of contracts, can be negative
+    pub unrealized_pnl: f64,
+
+    /// the price at which collateral becomes less than maintenanceMargin
+    pub liquidation_price: f64,
+
+    /// can be cross or isolated
+    pub margin_mode: MarginMode,
+
+    /// represents unrealizedPnl / initialMargin * 100
+    pub percentage: f64,
+}
+
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum PositionSide {
+    Long,
+    Short,
+}
+
+impl Default for PositionSide {
+    fn default() -> Self {
+        PositionSide::Long
+    }
+}
+
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BorrowInterest {
+    /// The market that the interest was accrued in. None for cross margin.
+    pub market: Option<Market>,
+
+    /// The currency of the interest
+    pub currency: String,
+
+    /// The amount of interest that was charged
+    pub interest: f64,
+
+    /// The borrow interest rate
+    pub interest_rate: f64,
+
+    /// The amount of currency that was borrowed
+    pub amount_borrowed: f64,
+
+    /// The timestamp that the interest was charged
+    pub timestamp: i64,
+}
+
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Order {
-    ///  The string ID of the network within the exchange.
+    ///  The string ID of the order within the exchange.
     pub id: Option<String>,
 
     ///  a user-defined clientOrderId, if any
@@ -440,6 +544,19 @@ pub enum TimeInForce {
 
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum MarginMode {
+    Cross,
+    Isolated,
+}
+
+impl Default for MarginMode {
+    fn default() -> Self {
+        MarginMode::Isolated
+    }
+}
+
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MarginType {
     NoSideEffect,
     MarginBuy,
@@ -597,4 +714,52 @@ impl TryFrom<&[String; 2]> for OrderBookUnit {
             quantity: value[1].parse::<f64>()?,
         })
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MarginLoan {
+    /// the transaction id
+    pub id: String,
+
+    /// the currency that is borrowed or repaid
+    pub currency: String,
+
+    /// the amount of currency that was borrowed or repaid
+    pub amount: f64,
+
+    /// unified market
+    pub market: Market,
+
+    /// the timestamp of when the transaction was made
+    pub timestamp: i64,
+}
+
+
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Balance {
+    /// Unix Timestamp in milliseconds
+    pub timestamp: i64,
+
+    /// the list of balance items
+    pub items: Vec<BalanceItem>,
+}
+
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BalanceItem {
+    /// currency code
+    pub currency: String,
+
+    /// money available for trading
+    pub free: f64,
+
+    /// money on hold, locked, frozen or pending
+    pub used: f64,
+
+    /// total balance (free + used)
+    pub total: f64,
+
+    /// debt
+    pub debt: f64,
 }

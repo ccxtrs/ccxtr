@@ -12,7 +12,7 @@ pub use property::PropertiesBuilder;
 use crate::{FetchMarketError, FetchMarketResult};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
 use crate::error::{CommonError, CommonResult, ConnectError, ConnectResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
-use crate::model::{Currency, Market, Order, OrderBook, Trade};
+use crate::model::{Balance, Currency, Market, Order, OrderBook, Position, Trade};
 use crate::util::channel::{Receiver, Sender};
 
 mod binance;
@@ -201,9 +201,14 @@ pub trait Exchange {
     }
 
     // private
-    async fn fetch_balance(&self) -> CommonResult<()> {
+    async fn fetch_balance(&self) -> CommonResult<Balance> {
         Err(CommonError::NotImplemented)
     }
+
+    async fn fetch_positions(&self) -> CommonResult<Vec<Position>> {
+        Err(CommonError::NotImplemented)
+    }
+
     async fn create_order(&self, _: Order) -> CreateOrderResult<Order> {
         Err(CreateOrderError::NotImplemented)
     }
