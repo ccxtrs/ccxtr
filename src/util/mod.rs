@@ -39,7 +39,6 @@ mod test {
 }
 
 
-
 pub(crate) fn timestamp_format(ts: i64, format: &str) -> Result<String> {
     match Utc.timestamp_millis_opt(ts) {
         chrono::LocalResult::None => Err(Error::InvalidTimestamp(ts)),
