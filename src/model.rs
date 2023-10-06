@@ -1,6 +1,5 @@
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
-use hmac::digest::typenum::Or;
 
 use serde::{Deserialize, Serialize};
 
@@ -272,8 +271,6 @@ pub struct Network {
     /// The minimums and maximums for amounts (volumes), withdrawals and deposits.
     pub limits: CurrencyLimit,
 }
-
-
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -735,7 +732,6 @@ pub struct MarginLoan {
 }
 
 
-
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Balance {
     /// Unix Timestamp in milliseconds
@@ -751,6 +747,9 @@ pub struct BalanceItem {
     /// currency code
     pub currency: String,
 
+    /// market for isolated margin
+    pub market: Option<Market>,
+
     /// money available for trading
     pub free: f64,
 
@@ -758,8 +757,9 @@ pub struct BalanceItem {
     pub used: f64,
 
     /// total balance (free + used)
-    pub total: f64,
+    pub total: Option<f64>,
 
     /// debt
     pub debt: f64,
+
 }

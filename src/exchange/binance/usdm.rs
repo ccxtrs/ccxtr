@@ -6,11 +6,12 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{CommonError, CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, PropertiesBuilder, WatchResult};
+use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, WatchResult};
 use crate::client::EMPTY_QUERY;
-use crate::error::{ConnectError, ConnectResult, Error, LoadMarketResult, OrderBookError, Result, WatchError};
+use crate::error::{Error, LoadMarketResult, OrderBookError, Result, WatchError};
 use crate::exchange::{ExchangeBase, StreamItem};
 use crate::exchange::binance::util;
+use crate::exchange::property::BasePropertiesBuilder;
 use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
 use crate::model::{MarketLimit, Precision, Range};
 use crate::util::channel::Receiver;
@@ -25,11 +26,11 @@ pub struct BinanceUsdm {
 
 impl BinanceUsdm {
     pub fn new(props: &Properties) -> CommonResult<Self> {
-        let common_props = PropertiesBuilder::new()
-            .host(props.host.as_ref().map_or("https://fapi.binance.com", |s| s.as_str()))
-            .port(props.port.unwrap_or(443))
-            .ws_endpoint("wss://fstream.binance.com/ws")
-            .error_parser(|message| {
+        let common_props = BasePropertiesBuilder::default()
+            .host(props.host.clone().or(Some("https://fapi.binance.com".to_string())))
+            .port(props.port.or(Some(443)))
+            .ws_endpoint(Some("wss://fstream.binance.com/ws".to_string()))
+            .error_parser(Some(|message| {
                 match serde_json::from_str::<ErrorResponse>(&message) {
                     Ok(error) => {
                         match error.code {
@@ -44,8 +45,8 @@ impl BinanceUsdm {
                     }
                     Err(_) => Error::DeserializeJsonBody(message),
                 }
-            })
-            .stream_parser(|message, unifier| {
+            }))
+            .stream_parser(Some(|message, unifier| {
                 let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
                 if common_message.result.is_some() { // subscription response
                     return None;
@@ -83,10 +84,10 @@ impl BinanceUsdm {
                     }
                     _ => return None,
                 }
-            });
+            })).build()?;
 
         Ok(Self {
-            exchange_base: ExchangeBase::new(&common_props.build())?,
+            exchange_base: ExchangeBase::new(&common_props)?,
             api_key: props.api_key.clone(),
             secret: props.secret.clone(),
         })
@@ -106,7 +107,7 @@ impl BinanceUsdm {
 impl Exchange for BinanceUsdm {
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
-            let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
+            let result = self.exchange_base.http_client.get::<(), FetchMarketsResponse>("/fapi/v1/exchangeInfo", None, None).await?;
             self.exchange_base.unifier.reset();
             let mut markets = vec![];
             for s in result.symbols {
@@ -125,7 +126,7 @@ impl Exchange for BinanceUsdm {
     }
 
     async fn fetch_markets(&self) -> FetchMarketResult<Vec<Market>> {
-        let result: FetchMarketsResponse = self.exchange_base.http_client.get("/fapi/v1/exchangeInfo", EMPTY_QUERY).await?;
+        let result = self.exchange_base.http_client.get::<(), FetchMarketsResponse>("/fapi/v1/exchangeInfo", None, None).await?;
         let mut markets = vec![];
         for s in result.symbols {
             if s.symbol.is_none() {
@@ -144,7 +145,7 @@ impl Exchange for BinanceUsdm {
         }
 
         if markets.len() == 0 {
-            return Ok(self.exchange_base.order_book_stream_rx.clone())
+            return Ok(self.exchange_base.order_book_stream_rx.clone());
         }
 
         let sender = self.exchange_base.ws_client.sender()

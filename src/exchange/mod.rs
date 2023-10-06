@@ -1,22 +1,26 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use tokio_stream::StreamExt;
 
 pub use binance::BinanceMargin;
 pub use binance::BinanceUsdm;
+pub use params::FetchBalanceParams;
+pub(crate) use property::BasePropertiesBuilderError;
 pub use property::Properties;
 pub use property::PropertiesBuilder;
+pub use property::PropertiesBuilderError;
 
 use crate::{FetchMarketError, FetchMarketResult};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::error::{CommonError, CommonResult, ConnectError, ConnectResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
+use crate::error::{CommonError, CommonResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
+use crate::exchange::property::BaseProperties;
 use crate::model::{Balance, Currency, Market, Order, OrderBook, Position, Trade};
 use crate::util::channel::{Receiver, Sender};
 
 mod binance;
 mod property;
+mod params;
 
 #[derive(Clone)]
 pub struct Unifier {
@@ -72,12 +76,9 @@ pub struct ExchangeBase {
     pub(super) unifier: Unifier,
 }
 
-const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
-const MAX_CAPACITY: usize = !(OPEN_MASK);
-const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
 
 impl ExchangeBase {
-    pub(crate) fn new(properties: &Properties) -> Result<Self> {
+    pub(crate) fn new(properties: &BaseProperties) -> Result<Self> {
         if properties.host.is_none() {
             return Err(Error::MissingProperties("host".into()));
         }
@@ -201,7 +202,7 @@ pub trait Exchange {
     }
 
     // private
-    async fn fetch_balance(&self) -> CommonResult<Balance> {
+    async fn fetch_balance(&self, params: &FetchBalanceParams) -> CommonResult<Balance> {
         Err(CommonError::NotImplemented)
     }
 

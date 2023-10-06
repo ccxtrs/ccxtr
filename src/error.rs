@@ -4,6 +4,7 @@ use std::sync::PoisonError;
 use hmac::digest::InvalidLength;
 use thiserror::Error;
 
+use crate::exchange::BasePropertiesBuilderError;
 use crate::model::Market;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -113,8 +114,6 @@ pub enum CommonError {
     #[error("credentials error {0}")]
     CredentialsError(String),
 
-
-
     #[error("invalid order book {0}")]
     InvalidOrderBook(String),
 
@@ -128,6 +127,15 @@ pub enum CommonError {
 
     #[error("invalid timestamp {0}")]
     InvalidTimestamp(i64),
+
+    #[error("parse error {0}")]
+    ParseFloatError(#[from] ParseFloatError),
+}
+
+impl From<BasePropertiesBuilderError> for CommonError {
+    fn from(value: BasePropertiesBuilderError) -> Self {
+        CommonError::MissingProperties(value.to_string())
+    }
 }
 
 impl From<Error> for CommonError {
@@ -182,7 +190,6 @@ impl From<Error> for ConnectError {
         }
     }
 }
-
 
 
 pub type OrderBookResult<T> = std::result::Result<T, OrderBookError>;

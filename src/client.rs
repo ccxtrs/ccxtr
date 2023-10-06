@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::io;
-use futures_util::stream::{SplitStream, Map};
-use futures_util::{SinkExt, StreamExt};
 
+use futures_util::{SinkExt, StreamExt};
+use futures_util::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpStream;
@@ -103,11 +103,18 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// query: `&[("foo", "a"), ("foo", "b")])` makes `"foo=a&foo=b"`
-    pub(crate) async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, query: Option<&Q>) -> Result<T> {
+    pub(crate) async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>) -> Result<T> {
         let mut builder = self.client.get(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);
         }
+
+        if headers.is_some() {
+            for (k, v) in headers.unwrap() {
+                builder = builder.header(k, v);
+            }
+        }
+
         let response = builder.send().await?;
         let code = response.status();
         if !code.is_success() {
@@ -186,6 +193,7 @@ impl HttpClientBuilder {
 #[cfg(test)]
 mod test {
     use tokio_stream::StreamExt;
+
     use crate::client::WsClient;
 
     #[tokio::test]

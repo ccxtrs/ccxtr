@@ -7,7 +7,7 @@ use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
 async fn main() {
     let api_key = std::env::var("API_KEY").unwrap();
     let secret = std::env::var("SECRET").unwrap();
-    let props = PropertiesBuilder::new().api_key(api_key.as_str()).secret(secret.as_str()).build();
+    let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to build properties");
     let mut ex = Arc::new(BinanceMargin::new(&props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
