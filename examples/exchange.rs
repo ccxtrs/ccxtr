@@ -1,7 +1,8 @@
 use std::sync::{Arc, atomic};
-use ccxtr::{BinanceMargin, ConnectError, OrderBookError, OrderBookResult, PropertiesBuilder};
+
+use ccxtr::{BinanceMargin, CreateOrderParamsBuilder, OrderBookError, PropertiesBuilder};
 use ccxtr::Exchange;
-use ccxtr::model::{MarginType, Market, MarketType, Order, OrderSide, OrderType};
+use ccxtr::model::{MarginMode, Market, MarketType, OrderType};
 
 #[tokio::main]
 async fn main() {
@@ -98,16 +99,13 @@ async fn main() {
 }
 
 async fn create_order(ex: &mut BinanceMargin, order_market: &Market) {
-    let order = Order {
-        market: order_market.clone(),
-        order_type: OrderType::Limit,
-        side: Some(OrderSide::Buy),
-        price: Some(20000_f64),
-        amount: 0.001,
-        margin_type: MarginType::MarginBuy,
-        ..Default::default()
-    };
-    let order = ex.create_order(order).await.or_else(|e| {
+    let params = CreateOrderParamsBuilder::default()
+        .market(order_market.clone())
+        .price(Some(20000_f64))
+        .amount(0.001)
+        .margin_mode(Some(MarginMode::Cross))
+        .order_type(Some(OrderType::Limit)).build().unwrap();
+    let order = ex.create_order(&params).await.or_else(|e| {
         println!("create order error: {:?}", e);
         Err(e)
     });

@@ -1,26 +1,17 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{CommonResult, CreateOrderResult, Exchange, FetchBalanceParams, FetchMarketResult, LoadMarketResult, OrderBookError, OrderBookResult, WatchError, WatchResult};
 use crate::client::EMPTY_BODY;
-use crate::error::{Error, Result};
-use crate::exchange::{ExchangeBase, StreamItem};
-use crate::exchange::binance::util;
-use crate::exchange::property::{BasePropertiesBuilder, Properties};
-use crate::model::{Balance, BalanceItem, MarginMode, Market, MarketLimit, MarketType, Order, OrderBook, OrderStatus, OrderType, Precision, Range, TimeInForce};
+use crate::error::*;
+use crate::exchange::*;
 use crate::util::channel::Receiver;
 use crate::util::into_precision;
 
-#[derive(Serialize, Deserialize)]
-struct ErrorResponse {
-    code: i64,
-    msg: String,
-}
+use super::util;
+
 
 pub struct BinanceMargin {
     exchange_base: ExchangeBase,
@@ -89,10 +80,6 @@ impl BinanceMargin {
             secret: props.secret.clone(),
         })
     }
-    async fn connect(&mut self) -> CommonResult<()> {
-        self.exchange_base.connect().await?;
-        Ok(())
-    }
 
     fn auth(&self, request: &String) -> Result<String> {
         if self.api_key.is_none() || self.secret.is_none() {
@@ -103,7 +90,7 @@ impl BinanceMargin {
         Ok(hex::encode(signed_key.finalize().into_bytes()))
     }
 
-    fn auth_map(&self, params: Option<&HashMap<&str, &str>>) -> Result<String> {
+    fn auth_map(&self, params: Option<&Vec<(&str, &str)>>) -> Result<String> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials);
         }
@@ -185,11 +172,11 @@ impl Exchange for BinanceMargin {
             return Err(Error::InvalidCredentials)?;
         }
 
-        let mut query: HashMap<&str, &str> = HashMap::new();
         let ts = Utc::now().timestamp_millis().to_string();
-        query.insert("timestamp", ts.as_str());
+        let mut query = vec![];
+        query.push(("timestamp", ts.as_str()));
         let signature = self.auth_map(Some(&query))?;
-        query.insert("signature", signature.as_str());
+        query.push(("signature", signature.as_str()));
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
 
         match params.margin_mode {
@@ -243,49 +230,57 @@ impl Exchange for BinanceMargin {
         }
     }
 
-    async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {
-        if request.price.is_none() && request.order_type == OrderType::Limit {
+    async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {
+        if self.api_key.is_none() || self.secret.is_none() {
+            return Err(Error::InvalidCredentials)?;
+        }
+        let order_type = params.order_type.unwrap_or_default();
+        if params.price.is_none() && order_type == OrderType::Limit {
             return Err(Error::InvalidPrice("price is required for limit orders".into()).into());
         }
-        let symbol_id = self.exchange_base.unifier.get_symbol_id(&request.market).ok_or(Error::SymbolNotFound(format!("{}", request.market)))?;
+
+        let symbol_id = self.exchange_base.unifier.get_symbol_id(&params.market).ok_or(Error::SymbolNotFound(format!("{}", params.market)))?;
         let timestamp = Utc::now().timestamp_millis();
 
-        let amount = request.amount.to_string();
+        let amount = params.amount.to_string();
         let timestamp = timestamp.to_string();
-        let price = request.price.map_or("".to_string(), |price| price.to_string());
 
-        let mut params: HashMap<&str, &str> = HashMap::new();
-        params.insert("symbol", symbol_id.as_str());
-        params.insert("side", util::get_exchange_order_side(&request.side.ok_or(Error::MissingField("side".into()))?));
-        params.insert("type", util::get_exchange_order_type(&request.order_type)?);
-        params.insert("quantity", amount.as_str());
-        params.insert("timeInForce", util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC)));
-        params.insert("recvWindow", "5000");
-        params.insert("timestamp", timestamp.as_str());
-        params.insert("sideEffectType", util::get_exchange_margin_type(&request.margin_type));
-        if price != "" {
-            params.insert("price", price.as_str());
+        let side_effect_type = match params.reduce_only {
+            true => "REDUCE_ONLY",
+            false => "MARGIN_BUY",
+        };
+
+        let is_isolated = match matches!(params.margin_mode, Some(MarginMode::Isolated)) {
+            true => "TRUE",
+            false => "FALSE",
+        };
+
+        let mut queries = vec![
+            ("symbol", symbol_id.as_str()),
+            ("isIsolated", is_isolated),
+            ("side", util::get_exchange_order_side(&params.order_side)),
+            ("type", util::get_exchange_order_type(&order_type)?),
+            ("quantity", amount.as_str()),
+            ("timeInForce", util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC))),
+            ("recvWindow", "5000"),
+            ("timestamp", timestamp.as_str()),
+            ("sideEffectType", side_effect_type),
+        ];
+
+        let price = params.price.map(|p| p.to_string());
+        if params.price.is_some() {
+            queries.push(("price", price.as_ref().unwrap().as_str()));
         }
 
-        let signature = self.auth_map(Some(&params))?;
-        params.insert("signature", signature.as_str());
+        let signature = self.auth_map(Some(&queries))?;
+        queries.push(("signature", signature.as_str()));
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
-        let response: CreateOrderResponse = self.exchange_base.http_client.post("/sapi/v1/margin/order", Some(headers), Some(&params), EMPTY_BODY).await?;
+        let response: CreateOrderResponse = self.exchange_base.http_client.post("/sapi/v1/margin/order", Some(headers), Some(&queries), EMPTY_BODY).await?;
         let mut order: Order = response.try_into()?;
-        order.market = request.market;
-        order.order_type = request.order_type;
+        order.market = params.market.clone();
+        order.order_type = order_type;
         Ok(order)
     }
-}
-
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GetOrderBookSnapshotResponse {
-    #[serde(rename = "lastUpdateId")]
-    pub last_update_id: i64,
-    pub bids: Vec<Vec<String>>,
-    pub asks: Vec<Vec<String>>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -415,7 +410,7 @@ impl From<Vec<u8>> for WatchDiffOrderBookResponse {
 
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct IsolatedAccountAsset {
+struct FetchIsolatedAccountAssetResponse {
     pub asset: String,
     #[serde(rename = "borrowEnabled")]
     pub borrow_enabled: bool,
@@ -434,11 +429,11 @@ struct IsolatedAccountAsset {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct IsolatedAccountSymbol {
+struct FetchIsolatedAccountSymbolResponse {
     #[serde(rename = "baseAsset")]
-    pub base_asset: IsolatedAccountAsset,
+    pub base_asset: FetchIsolatedAccountAssetResponse,
     #[serde(rename = "quoteAsset")]
-    pub quote_asset: IsolatedAccountAsset,
+    pub quote_asset: FetchIsolatedAccountAssetResponse,
     pub symbol: String,
     #[serde(rename = "isolatedCreated")]
     pub isolated_created: bool,
@@ -461,7 +456,7 @@ struct IsolatedAccountSymbol {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct FetchIsolatedAccountResponse {
-    pub assets: Vec<IsolatedAccountSymbol>,
+    pub assets: Vec<FetchIsolatedAccountSymbolResponse>,
     #[serde(rename = "totalAssetOfBtc")]
     pub total_asset_of_btc: String,
     #[serde(rename = "totalLiabilityOfBtc")]
@@ -472,7 +467,7 @@ struct FetchIsolatedAccountResponse {
 
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct FetchAccountAsset {
+struct FetchAccountAssetResponse {
     pub asset: String,
     pub borrowed: String,
     pub free: String,
@@ -499,7 +494,7 @@ struct FetchAccountResponse {
     #[serde(rename = "transferEnabled")]
     pub transfer_enabled: bool,
     #[serde(rename = "userAssets")]
-    pub user_assets: Vec<FetchAccountAsset>,
+    pub user_assets: Vec<FetchAccountAssetResponse>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -508,14 +503,14 @@ struct FetchMarketsResponse {
     #[serde(rename = "serverTime")]
     pub server_time: i64,
     #[serde(rename = "rateLimits")]
-    pub rate_limits: Vec<RateLimit>,
+    pub rate_limits: Vec<FetchMarketRateLimitResponse>,
     #[serde(rename = "exchangeFilters")]
-    pub exchange_filters: Vec<Filter>,
-    pub symbols: Vec<FetchMarketsSymbol>,
+    pub exchange_filters: Vec<FetchMarketFilterResponse>,
+    pub symbols: Vec<FetchMarketsSymbolResponse>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct FetchMarketsSymbol {
+struct FetchMarketsSymbolResponse {
     pub symbol: String,
     pub status: Option<String>,
     #[serde(rename = "baseAsset")]
@@ -542,7 +537,7 @@ struct FetchMarketsSymbol {
     pub is_spot_trading_allowed: bool,
     #[serde(rename = "isMarginTradingAllowed")]
     pub is_margin_trading_allowed: bool,
-    pub filters: Option<Vec<Filter>>,
+    pub filters: Option<Vec<FetchMarketFilterResponse>>,
     pub permissions: Vec<String>,
     #[serde(rename = "defaultSelfTradePreventionMode")]
     pub default_self_trade_prevention_mode: String,
@@ -550,7 +545,7 @@ struct FetchMarketsSymbol {
     pub allowed_self_trade_prevention_modes: Vec<String>,
 }
 
-impl Into<Result<Market>> for &FetchMarketsSymbol {
+impl Into<Result<Market>> for &FetchMarketsSymbolResponse {
     fn into(self) -> Result<Market> {
         let base_id = self.base_asset.clone().ok_or_else(|| Error::MissingField("base_asset".into()))?;
         let quote_id = self.quote_asset.clone().ok_or_else(|| Error::MissingField("quote_asset".into()))?;
@@ -627,7 +622,7 @@ impl Into<Result<Market>> for &FetchMarketsSymbol {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Filter {
+struct FetchMarketFilterResponse {
     pub filter_type: String,
     pub max_price: Option<String>,
     // PRICE_FILTER
@@ -687,11 +682,18 @@ struct Filter {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RateLimit {
+struct FetchMarketRateLimitResponse {
     pub interval: String,
     pub interval_num: i64,
     pub limit: i64,
     pub rate_limit_type: String,
+}
+
+
+#[derive(Serialize, Deserialize)]
+struct ErrorResponse {
+    code: i64,
+    msg: String,
 }
 
 
@@ -709,8 +711,14 @@ mod test {
 
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
         let exchange = BinanceMargin::new(&props).expect("failed to create exchange");
-        let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Isolated)).build().unwrap();
-        let result = exchange.fetch_balance(&params).await;
-        println!("{:?}", result);
+        let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().unwrap();
+        let balance = exchange.fetch_balance(&params).await;
+        let balance = balance.expect("failed to fetch balance");
+        balance.items.iter().for_each(|item| {
+            if item.currency != "USDT" && item.currency != "BTC" {
+                return;
+            }
+            println!("{:?}", item);
+        });
     }
 }

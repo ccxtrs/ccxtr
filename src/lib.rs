@@ -1,9 +1,10 @@
 pub use exchange::BinanceMargin;
 pub use exchange::BinanceUsdm;
 pub use exchange::Exchange;
-pub use exchange::FetchBalanceParams;
-pub use exchange::Properties;
-pub use exchange::PropertiesBuilder;
+pub use exchange::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
+pub use exchange::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
+pub use exchange::{FetchPositionsParams, FetchPositionsParamsBuilder, FetchPositionsParamsBuilderError};
+pub use exchange::{Properties, PropertiesBuilder, PropertiesBuilderError};
 
 pub use crate::error::{ConnectError, ConnectResult};
 pub use crate::error::{FetchMarketError, FetchMarketResult};

@@ -33,10 +33,6 @@ impl From<io::Error> for Error {
 }
 
 
-const OPEN_MASK: usize = usize::MAX - (usize::MAX >> 1);
-const MAX_CAPACITY: usize = !(OPEN_MASK);
-const MAX_BUFFER: usize = (MAX_CAPACITY >> 1) - 1;
-
 impl WsClient {
     pub fn new(endpoint: &str) -> Self {
         Self {
@@ -201,7 +197,7 @@ mod test {
         let mut client = WsClient::new("wss://stream.binance.com:9443/ws");
         client.connect().await.unwrap();
         let sender = client.sender();
-        let mut sender = sender.unwrap();
+        let sender = sender.unwrap();
         sender.send_async("test".to_string()).await.unwrap();
         sender.send_async("test2".to_string()).await.unwrap();
 

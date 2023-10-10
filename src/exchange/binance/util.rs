@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::model::{MarginType, OrderSide, OrderStatus, OrderType, TimeInForce};
+use crate::model::{OrderSide, OrderStatus, OrderType, TimeInForce};
 
 pub(in super) fn to_unified_asset(exchange_asset: &str) -> String {
     exchange_asset.to_uppercase()
@@ -33,17 +33,7 @@ pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> &'st
     }
 }
 
-const NO_SIDE_EFFECT: &str = "NO_SIDE_EFFECT";
-const MARGIN_BUY: &str = "MARGIN_BUY";
-const AUTO_REPAY: &str = "AUTO_REPAY";
 
-pub(in super) fn get_exchange_margin_type(margin_type: &MarginType) -> &'static str {
-    match margin_type {
-        MarginType::NoSideEffect => NO_SIDE_EFFECT,
-        MarginType::MarginBuy => MARGIN_BUY,
-        MarginType::AutoRepay => AUTO_REPAY,
-    }
-}
 
 
 const LIMIT: &str = "LIMIT";

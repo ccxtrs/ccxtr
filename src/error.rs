@@ -12,6 +12,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, PartialEq)]
 pub(crate) enum Error {
     NotImplemented,
+    MarketNotInitialized,
     InvalidTimestamp(i64),
     LockError(String),
     DeserializeJsonBody(String),
@@ -36,17 +37,12 @@ pub(crate) enum Error {
     CredentialsError(String),
 
     InvalidOrderBook(String),
+    InvalidResponse(String),
     SynchronizationError,
 
     InsufficientMargin(String),
 }
 
-
-impl From<Error> for std::fmt::Error {
-    fn from(_: Error) -> Self {
-        std::fmt::Error {}
-    }
-}
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
@@ -344,3 +340,25 @@ impl From<FetchMarketError> for LoadMarketError {
         }
     }
 }
+
+
+pub type FetchBalanceResult<T> = CommonResult<T>;
+pub type FetchPositionsResult<T> = std::result::Result<T, FetchPositionsError>;
+
+#[derive(Error, Debug)]
+pub enum FetchPositionsError {
+    #[error("market not initialized")]
+    MarketNotInitialized,
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
+
+impl From<Error> for FetchPositionsError {
+    fn from(e: Error) -> Self {
+        match e {
+            _ => FetchPositionsError::UnknownError(format!("{:?}", e)),
+        }
+    }
+}
+

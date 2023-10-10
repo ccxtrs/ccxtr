@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
@@ -6,21 +7,19 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{CommonResult, CreateOrderResult, exchange::{Exchange, Properties}, FetchMarketResult, model::{Market, MarketType}, OrderBookResult, WatchResult};
 use crate::client::EMPTY_QUERY;
-use crate::error::{Error, LoadMarketResult, OrderBookError, Result, WatchError};
-use crate::exchange::{ExchangeBase, StreamItem};
-use crate::exchange::binance::util;
-use crate::exchange::property::BasePropertiesBuilder;
-use crate::model::{ContractType, Order, OrderBook, OrderBookUnit, OrderStatus, OrderType, TimeInForce};
-use crate::model::{MarketLimit, Precision, Range};
+use crate::error::*;
+use crate::exchange::*;
 use crate::util::channel::Receiver;
 use crate::util::into_precision;
+
+use super::util;
 
 pub struct BinanceUsdm {
     exchange_base: ExchangeBase,
     api_key: Option<String>,
     secret: Option<String>,
+    leverage_brackets: Option<HashMap<Market, Vec<LeverageBracket>>>,
 }
 
 
@@ -90,6 +89,7 @@ impl BinanceUsdm {
             exchange_base: ExchangeBase::new(&common_props)?,
             api_key: props.api_key.clone(),
             secret: props.secret.clone(),
+            leverage_brackets: None,
         })
     }
 
@@ -97,9 +97,53 @@ impl BinanceUsdm {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials);
         }
-        let mut signed_key = Hmac::<Sha256>::new_from_slice(self.secret.clone().unwrap().as_bytes())?;
+        let mut signed_key = Hmac::<Sha256>::new_from_slice(self.secret.as_ref().unwrap().as_bytes())?;
         signed_key.update(request.as_bytes());
         Ok(hex::encode(signed_key.finalize().into_bytes()))
+    }
+
+    fn auth_map(&self, params: Option<&Vec<(&str, &str)>>) -> Result<String> {
+        if self.api_key.is_none() || self.secret.is_none() {
+            return Err(Error::InvalidCredentials);
+        }
+        match params {
+            Some(params) => {
+                let params = params.iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>()
+                    .join("&");
+                Ok(self.auth(&params)?)
+            }
+            None => Ok(self.auth(&"".to_string())?),
+        }
+    }
+
+
+    async fn load_leverage_brackets(&mut self) -> Result<()> {
+        let mut query: Vec<(&str, &str)> = vec![];
+        let ts = Utc::now().timestamp_millis().to_string();
+        query.push(("timestamp", ts.as_str()));
+        let signature = self.auth_map(Some(&query))?;
+        query.push(("signature", signature.as_str()));
+        let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
+
+        self.leverage_brackets = Some(HashMap::new());
+        let result: Vec<FetchLeverageResponse> = self.exchange_base.http_client.get("/fapi/v1/leverageBracket", Some(headers), Some(&query)).await?;
+        for resp in result {
+            let market = self.exchange_base.unifier.get_market(&resp.symbol);
+            match market {
+                Some(market) => {
+                    resp.brackets.iter().for_each(|b| {
+                        self.leverage_brackets.as_mut().unwrap().entry(market.clone()).or_insert(vec![]).push(LeverageBracket {
+                            notional_floor: b.notional_floor,
+                            maintenance_margin_ratio: b.maint_margin_ratio,
+                        });
+                    });
+                }
+                None => continue,
+            }
+        }
+        Ok(())
     }
 }
 
@@ -120,6 +164,7 @@ impl Exchange for BinanceUsdm {
                 markets.push(market);
             }
             self.exchange_base.markets = markets;
+            self.load_leverage_brackets().await?;
             self.exchange_base.connect().await?;
         }
         Ok(self.exchange_base.markets.clone())
@@ -169,31 +214,147 @@ impl Exchange for BinanceUsdm {
         Ok(self.exchange_base.order_book_stream_rx.clone())
     }
 
-    async fn create_order(&self, request: Order) -> CreateOrderResult<Order> {
-        if request.price.is_none() && request.order_type == OrderType::Limit {
+    async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {
+        if self.api_key.is_none() || self.secret.is_none() {
+            return Err(Error::InvalidCredentials.into());
+        }
+
+        let order_type = params.order_type.unwrap_or_default();
+        if params.price.is_none() && order_type == OrderType::Limit {
             return Err(Error::InvalidPrice("price is required for limit orders".into()).into());
         }
-        let symbol_id = self.exchange_base.unifier.get_symbol_id(&request.market).ok_or(Error::SymbolNotFound(format!("{}", request.market)))?;
-        let timestamp = Utc::now().timestamp_millis();
-        let mut params = format!("symbol={}&side={}&type={}&quantity={}&timeInForce={}&recvWindow=5000&timestamp={}",
-                                 symbol_id,
-                                 util::get_exchange_order_side(&request.side.ok_or(Error::MissingField("side".into()))?),
-                                 util::get_exchange_order_type(&request.order_type)?,
-                                 request.amount,
-                                 util::get_exchange_time_in_force(&request.time_in_force.unwrap_or(TimeInForce::GTC)),
-                                 timestamp);
-        if request.price.is_some() {
-            params = format!("{}&price={}", params, request.price.unwrap());
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
         }
-        let signature = self.auth(&params)?;
-        let params = format!("{}&signature={}", params, signature);
+        let symbol_id = self.exchange_base.unifier.get_symbol_id(&params.market).ok_or(Error::SymbolNotFound(format!("{}", params.market)))?;
+        let timestamp = Utc::now().timestamp_millis();
+        let mut body = format!("symbol={}&side={}&type={}&quantity={}&timeInForce={}&recvWindow=5000&timestamp={}",
+                               symbol_id,
+                               util::get_exchange_order_side(&params.order_side),
+                               util::get_exchange_order_type(&order_type)?,
+                               params.amount,
+                               util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC)),
+                               timestamp);
+        if params.price.is_some() {
+            body = format!("{}&price={}", body, params.price.unwrap());
+        }
+        let signature = self.auth(&body)?;
+        let body = format!("{}&signature={}", body, signature);
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
-        let response: CreateOrderResponse = self.exchange_base.http_client.post("/fapi/v1/order", Some(headers), EMPTY_QUERY, Some(&params)).await?;
+        let response: CreateOrderResponse = self.exchange_base.http_client.post("/fapi/v1/order", Some(headers), EMPTY_QUERY, Some(&body)).await?;
         let mut order: Order = response.try_into()?;
-        order.market = request.market;
-        order.order_type = request.order_type;
+        order.market = params.market.clone();
+        order.order_type = order_type;
         Ok(order)
     }
+
+    async fn fetch_positions(&self, params: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
+        }
+        let mut query = vec![];
+        let ts = Utc::now().timestamp_millis().to_string();
+        query.push(("timestamp", ts.as_str()));
+        let signature = self.auth_map(Some(&query))?;
+        query.push(("signature", signature.as_str()));
+        let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
+        let items: Vec<FetchPositionsResponse> = self.exchange_base.http_client.get("/fapi/v2/positionRisk", Some(headers), Some(&query)).await?;
+
+        let mut ret = vec![];
+        for item in items {
+            let market = self.exchange_base.unifier.get_market(&item.symbol);
+            if market.is_none() {
+                continue;
+            }
+            let market = market.unwrap();
+
+            let notional: f64 = item.notional.parse().map_err(|_| Error::ParseError(item.notional))?;
+            let abs_notional = notional.abs();
+
+            let maintenance_margin_percent = self.leverage_brackets
+                .as_ref()
+                .and_then(|leverage_brackets| leverage_brackets.get(&market))
+                .and_then(|brackets| brackets.iter().find(|b| abs_notional >= b.notional_floor))
+                .map(|b| b.maintenance_margin_ratio);
+
+            let maintenance_margin_percent = maintenance_margin_percent.ok_or_else(|| Error::InvalidResponse("maintenance margin ratio is not found".into()))?;
+            let maintenance_margin = abs_notional * maintenance_margin_percent;
+
+            let margin_mode = match item.margin_type.as_str() {
+                "cross" => MarginMode::Cross,
+                _ => MarginMode::Isolated,
+            };
+            let is_hedged = match item.position_side.as_str() {
+                "BOTH" => true,
+                _ => false,
+            };
+
+            let side = match notional {
+                n if n > 0.0 => PositionSide::Long,
+                n if n < 0.0 => PositionSide::Short,
+                _ => continue,
+            };
+            let contracts = item.position_amt.parse().map_err(|_| Error::ParseError(item.position_amt))?;
+            let liquidation_price = item.liquidation_price.parse().map_err(|_| Error::ParseError(item.liquidation_price))?;
+            let entry_price = item.entry_price.parse().map_err(|_| Error::ParseError(item.entry_price))?;
+            let leverage = item.leverage.parse().map_err(|_| Error::ParseError(item.leverage))?;
+
+            let collateral: f64 = match margin_mode {
+                MarginMode::Cross => {
+                    // walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
+                    let mmp = match side {
+                        PositionSide::Long => {
+                            -1f64 + maintenance_margin_percent
+                        }
+                        PositionSide::Short => {
+                            1f64 + maintenance_margin_percent
+                        }
+                    };
+                    (liquidation_price * mmp + entry_price) * contracts
+                }
+                MarginMode::Isolated => item.isolated_margin.parse().map_err(|_| Error::ParseError(item.isolated_margin))?,
+            };
+
+            let initial_margin_percent = 1f64 / leverage;
+            let initial_margin = abs_notional * initial_margin_percent;
+
+            let margin_ratio = maintenance_margin / collateral + 5e-5;
+            let unrealized_pnl = item.un_realized_profit.parse::<f64>().map_err(|_| Error::ParseError(item.un_realized_profit))?;
+            let percentage = unrealized_pnl / initial_margin * 100f64;
+
+            ret.push(Position {
+                market: market.clone(),
+                side,
+                contracts,
+                contract_size: market.contract_size,
+                unrealized_pnl,
+                leverage,
+                liquidation_price,
+                collateral,
+                notional: abs_notional,
+                mark_price: item.mark_price.parse().map_err(|_| Error::ParseError(item.mark_price))?,
+                entry_price,
+                timestamp: item.update_time,
+
+                initial_margin,
+                initial_margin_percent,
+                maintenance_margin_percent,
+                maintenance_margin,
+
+                margin_ratio,
+                margin_mode,
+                is_hedged,
+                percentage,
+                ..Default::default()
+            });
+        }
+        Ok(ret)
+    }
+}
+
+struct LeverageBracket {
+    notional_floor: f64,
+    maintenance_margin_ratio: f64,
 }
 
 
@@ -303,18 +464,36 @@ impl TryFrom<CreateOrderResponse> for Order {
 }
 
 
-#[derive(Serialize)]
-struct LoadMarketsRequest {}
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FetchLeverageBracketResponse {
+    pub bracket: f64,
+    #[serde(rename = "initialLeverage")]
+    pub initial_leverage: f64,
+    #[serde(rename = "notionalCap")]
+    pub notional_cap: f64,
+    #[serde(rename = "notionalFloor")]
+    pub notional_floor: f64,
+    #[serde(rename = "maintMarginRatio")]
+    pub maint_margin_ratio: f64,
+    pub cum: f64,
+}
 
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FetchLeverageResponse {
+    pub symbol: String,
+    #[serde(rename = "notionalCoef")]
+    pub notional_coef: Option<f64>,
+    pub brackets: Vec<FetchLeverageBracketResponse>,
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FetchMarketsResponse {
     pub exchange_filters: Option<Vec<String>>,
-    pub rate_limits: Vec<RateLimit>,
+    pub rate_limits: Vec<FetchMarketsRateLimitResponse>,
     pub server_time: i64,
-    pub assets: Option<Vec<Asset>>,
-    pub symbols: Vec<Symbol>,
+    pub assets: Option<Vec<FetchMarketsAssetResponse>>,
+    pub symbols: Vec<FetchMarketsSymbolResponse>,
     pub timezone: String,
 }
 
@@ -331,7 +510,7 @@ impl TryInto<Vec<Market>> for FetchMarketsResponse {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RateLimit {
+struct FetchMarketsRateLimitResponse {
     pub interval: String,
     pub interval_num: i64,
     pub limit: i64,
@@ -340,7 +519,7 @@ struct RateLimit {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Asset {
+struct FetchMarketsAssetResponse {
     pub asset: String,
     pub margin_available: bool,
     pub auto_asset_exchange: Option<String>,
@@ -348,7 +527,7 @@ struct Asset {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Symbol {
+struct FetchMarketsSymbolResponse {
     pub symbol: Option<String>,
     pub pair: Option<String>,
     pub contract_type: Option<String>,
@@ -368,14 +547,14 @@ struct Symbol {
     pub underlying_sub_type: Option<Vec<String>>,
     pub settle_plan: Option<i64>,
     pub trigger_protect: Option<String>,
-    pub filters: Option<Vec<Filter>>,
+    pub filters: Option<Vec<FetchMarketsFilterResponse>>,
     pub order_type: Option<Vec<String>>,
     pub time_in_force: Option<Vec<String>>,
     pub liquidation_fee: Option<String>,
     pub market_take_bound: Option<String>,
 }
 
-impl Into<Result<Market>> for &Symbol {
+impl Into<Result<Market>> for &FetchMarketsSymbolResponse {
     fn into(self) -> Result<Market> {
         let base_id = self.base_asset.clone().ok_or_else(|| Error::MissingField("base_asset".into()))?;
         let quote_id = self.quote_asset.clone().ok_or_else(|| Error::MissingField("quote_asset".into()))?;
@@ -440,6 +619,7 @@ impl Into<Result<Market>> for &Symbol {
             active,
             market_type,
             settle,
+            contract_size: Some(1.0),
             contract_type: Some(ContractType::Linear),
             expiry: self.delivery_date,
             precision: Some(precision),
@@ -451,7 +631,7 @@ impl Into<Result<Market>> for &Symbol {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Filter {
+struct FetchMarketsFilterResponse {
     pub filter_type: String,
     pub max_price: Option<String>,
     pub min_price: Option<String>,
@@ -466,3 +646,81 @@ struct Filter {
     pub multiplier_decimal: Option<String>,
 }
 
+
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchPositionsResponse {
+    pub symbol: String,
+    pub position_amt: String,
+    pub entry_price: String,
+    pub break_even_price: String,
+    pub mark_price: String,
+    pub un_realized_profit: String,
+    pub liquidation_price: String,
+    pub leverage: String,
+    pub max_notional_value: String,
+    pub margin_type: String,
+    pub isolated_margin: String,
+    pub is_auto_add_margin: String,
+    pub position_side: String,
+    pub notional: String,
+    pub isolated_wallet: String,
+    pub update_time: i64,
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::{BinanceUsdm, Exchange, PropertiesBuilder};
+    use crate::exchange::params::FetchPositionsParamsBuilder;
+
+    #[tokio::test]
+    async fn test_auth() {
+        let api_key = "dbefbc809e3e83c283a984c3a1459732ea7db1360ca80c5c2c8867408d28cc83";
+        let secret = "2b5eb11e18796d12d88f13dc27dbbd02c2cc51ff7059765ed9821957d82bb4d9";
+
+        let props = PropertiesBuilder::default().api_key(Some(api_key.to_string())).secret(Some(secret.to_string())).build().expect("failed to create properties");
+        let exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let mut params = vec![];
+        params.push(("symbol", "BTCUSDT"));
+        params.push(("side", "BUY"));
+        params.push(("type", "LIMIT"));
+        params.push(("quantity", "1"));
+        params.push(("price", "9000"));
+        params.push(("timeInForce", "GTC"));
+        params.push(("recvWindow", "5000"));
+        params.push(("timestamp", "1591702613943"));
+        let result = exchange.auth_map(Some(&params));
+        assert_eq!(result.unwrap(), "3c661234138461fcc7a7d8746c6558c9842d4e10870d2ecbedf7777cad694af9");
+    }
+
+    #[tokio::test]
+    async fn test_load_leverage_brackets() {
+        let api_key = std::env::var("BINANCE_API_KEY").expect("BINANCE_API_KEY is not set");
+        let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
+
+        let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
+        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let result = exchange.load_leverage_brackets().await;
+        println!("{:?}", result);
+        assert!(!result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_positions() {
+        let api_key = std::env::var("BINANCE_API_KEY").expect("BINANCE_API_KEY is not set");
+        let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
+
+        let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
+        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        exchange.load_markets().await.expect("failed to load markets");
+        let params = FetchPositionsParamsBuilder::default().build().expect("failed to create params");
+        let result = exchange.fetch_positions(&params).await;
+        for p in result.unwrap() {
+            if p.notional != 0.0 {
+                println!("{:?}", p);
+            }
+        }
+    }
+}

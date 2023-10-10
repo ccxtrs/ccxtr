@@ -5,17 +5,15 @@ use tokio_stream::StreamExt;
 
 pub use binance::BinanceMargin;
 pub use binance::BinanceUsdm;
-pub use params::FetchBalanceParams;
-pub(crate) use property::BasePropertiesBuilderError;
-pub use property::Properties;
-pub use property::PropertiesBuilder;
-pub use property::PropertiesBuilderError;
+pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
+pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
+pub use params::{FetchPositionsParams, FetchPositionsParamsBuilder, FetchPositionsParamsBuilderError};
+pub use property::{Properties, PropertiesBuilder, PropertiesBuilderError};
+pub(crate) use property::{BaseProperties, BasePropertiesBuilder, BasePropertiesBuilderError};
 
-use crate::{FetchMarketError, FetchMarketResult};
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::error::{CommonError, CommonResult, CreateOrderError, CreateOrderResult, Error, LoadMarketError, LoadMarketResult, OrderBookResult, Result, WatchError, WatchResult};
-use crate::exchange::property::BaseProperties;
-use crate::model::{Balance, Currency, Market, Order, OrderBook, Position, Trade};
+use crate::error::*;
+use crate::model::*;
 use crate::util::channel::{Receiver, Sender};
 
 mod binance;
@@ -202,15 +200,15 @@ pub trait Exchange {
     }
 
     // private
-    async fn fetch_balance(&self, params: &FetchBalanceParams) -> CommonResult<Balance> {
+    async fn fetch_balance(&self, _: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
         Err(CommonError::NotImplemented)
     }
 
-    async fn fetch_positions(&self) -> CommonResult<Vec<Position>> {
-        Err(CommonError::NotImplemented)
+    async fn fetch_positions(&self, _: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
+        Err(Error::NotImplemented.into())
     }
 
-    async fn create_order(&self, _: Order) -> CreateOrderResult<Order> {
+    async fn create_order(&self, _: &CreateOrderParams) -> CreateOrderResult<Order> {
         Err(CreateOrderError::NotImplemented)
     }
     async fn cancel_order(&self, _: Order) -> CommonResult<Order> {

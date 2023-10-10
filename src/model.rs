@@ -131,7 +131,7 @@ impl Display for Market {
             if self.expiry.is_none() {
                 write!(f, "-UNKNOWN")?;
             } else {
-                let delivery = timestamp_format(self.expiry.unwrap(), "%y%m%d")?;
+                let delivery = timestamp_format(self.expiry.unwrap(), "%y%m%d").map_err(|_| Error)?;
                 write!(f, "-{}", delivery)?;
             }
         }
@@ -284,9 +284,6 @@ pub struct Position {
     /// integer unix time since 1st Jan 1970 in milliseconds
     pub timestamp: i64,
 
-    /// whether or not the position is isolated, as opposed to cross where margin is added automatically
-    pub is_isolated: bool,
-
     /// whether or not the position is hedged, i.e. if trading in the opposite direction will close this position or make a new one
     pub is_hedged: bool,
 
@@ -297,7 +294,7 @@ pub struct Position {
     pub contracts: f64,
 
     /// the size of one contract in quote units
-    pub contract_size: f64,
+    pub contract_size: Option<f64>,
 
     /// the average entry price of the position
     pub entry_price: f64,
@@ -334,6 +331,9 @@ pub struct Position {
 
     /// can be cross or isolated
     pub margin_mode: MarginMode,
+
+    /// margin ratio
+    pub margin_ratio: f64,
 
     /// represents unrealizedPnl / initialMargin * 100
     pub percentage: f64,
@@ -428,8 +428,7 @@ pub struct Order {
     /// fee info, if available
     pub fee: Option<OrderFee>,
 
-    /// margin type, 'no side effect', 'margin buy', 'auto repay'
-    pub margin_type: MarginType,
+    pub margin_mode: MarginMode,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -552,19 +551,6 @@ impl Default for MarginMode {
     }
 }
 
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum MarginType {
-    NoSideEffect,
-    MarginBuy,
-    AutoRepay,
-}
-
-impl Default for MarginType {
-    fn default() -> Self {
-        MarginType::NoSideEffect
-    }
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OrderType {
