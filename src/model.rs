@@ -743,7 +743,7 @@ pub struct BalanceItem {
     pub used: f64,
 
     /// total balance (free + used)
-    pub total: Option<f64>,
+    pub total: f64,
 
     /// debt
     pub debt: f64,

@@ -192,7 +192,7 @@ impl Exchange for BinanceMargin {
                         used,
                         free,
                         debt: asset.interest.parse::<f64>()? + asset.borrowed.parse::<f64>()?,
-                        total: Some(free + used),
+                        total: free + used,
                     });
                 }
                 Ok(Balance {
@@ -204,21 +204,25 @@ impl Exchange for BinanceMargin {
                 let resp: FetchIsolatedAccountResponse = self.exchange_base.http_client.get("/sapi/v1/margin/isolated/account", Some(headers), Some(&query)).await?;
                 let mut items = vec![];
                 for symbol in resp.assets {
+                    let base_used = symbol.base_asset.locked.parse::<f64>()?;
+                    let base_free = symbol.base_asset.free.parse::<f64>()?;
                     items.push(BalanceItem {
                         currency: util::to_unified_asset(symbol.base_asset.asset.as_str()),
                         market: self.exchange_base.unifier.get_market(&symbol.symbol),
-                        used: symbol.base_asset.locked.parse::<f64>()?,
-                        free: symbol.base_asset.free.parse::<f64>()?,
+                        used: base_used,
+                        free: base_free,
                         debt: symbol.base_asset.interest.parse::<f64>()? + symbol.base_asset.borrowed.parse::<f64>()?,
-                        total: None,
+                        total: base_free + base_used,
                     });
+                    let quote_used = symbol.quote_asset.locked.parse::<f64>()?;
+                    let quote_free = symbol.quote_asset.free.parse::<f64>()?;
                     items.push(BalanceItem {
                         currency: util::to_unified_asset(symbol.quote_asset.asset.as_str()),
                         market: self.exchange_base.unifier.get_market(&symbol.symbol),
-                        used: symbol.quote_asset.locked.parse::<f64>()?,
-                        free: symbol.quote_asset.free.parse::<f64>()?,
+                        used: quote_used,
+                        free: quote_free,
                         debt: symbol.quote_asset.interest.parse::<f64>()? + symbol.quote_asset.borrowed.parse::<f64>()?,
-                        total: None,
+                        total: quote_free + quote_used,
                     });
                 }
                 Ok(Balance {
