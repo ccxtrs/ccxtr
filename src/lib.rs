@@ -8,6 +8,8 @@ pub use exchange::{Properties, PropertiesBuilder, PropertiesBuilderError};
 
 pub use crate::error::{ConnectError, ConnectResult};
 pub use crate::error::{FetchMarketError, FetchMarketResult};
+pub use crate::error::{FetchPositionsError, FetchPositionsResult};
+pub use crate::error::{FetchBalanceError, FetchBalanceResult};
 pub use crate::error::{LoadMarketError, LoadMarketResult};
 pub use crate::error::{CommonError, CommonResult};
 pub use crate::error::{WatchError, WatchResult};

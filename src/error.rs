@@ -342,13 +342,31 @@ impl From<FetchMarketError> for LoadMarketError {
 }
 
 
-pub type FetchBalanceResult<T> = CommonResult<T>;
+pub type FetchBalanceResult<T> = std::result::Result<T, FetchBalanceError>;
+
+#[derive(Error, Debug)]
+pub enum FetchBalanceError {
+    #[error("not implemented")]
+    NotImplemented,
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
+
+impl From<Error> for FetchBalanceError {
+    fn from(e: Error) -> Self {
+        match e {
+            _ => FetchBalanceError::UnknownError(format!("{:?}", e)),
+        }
+    }
+}
+
 pub type FetchPositionsResult<T> = std::result::Result<T, FetchPositionsError>;
 
 #[derive(Error, Debug)]
 pub enum FetchPositionsError {
-    #[error("market not initialized")]
-    MarketNotInitialized,
+    #[error("not implemented")]
+    NotImplemented,
     #[error("unknown error {0}")]
     UnknownError(String),
 }

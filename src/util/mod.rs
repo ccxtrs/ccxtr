@@ -28,6 +28,11 @@ pub(crate) fn into_precision(s: String) -> Result<isize> {
     Ok(precision + 1isize)
 }
 
+pub(crate) fn parse_float64(s: &str) -> Result<f64> {
+    let d = f64::from_str(s)?;
+    Ok(d)
+}
+
 #[cfg(test)]
 mod test {
     #[test]

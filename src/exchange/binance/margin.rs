@@ -8,7 +8,7 @@ use crate::client::EMPTY_BODY;
 use crate::error::*;
 use crate::exchange::*;
 use crate::util::channel::Receiver;
-use crate::util::into_precision;
+use crate::util::{into_precision, parse_float64};
 
 use super::util;
 
@@ -167,7 +167,7 @@ impl Exchange for BinanceMargin {
         Ok(self.exchange_base.order_book_stream_rx.clone())
     }
 
-    async fn fetch_balance(&self, params: &FetchBalanceParams) -> CommonResult<Balance> {
+    async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials)?;
         }
@@ -184,14 +184,14 @@ impl Exchange for BinanceMargin {
                 let resp: FetchAccountResponse = self.exchange_base.http_client.get("/sapi/v1/margin/account", Some(headers), Some(&query)).await?;
                 let mut items = vec![];
                 for asset in resp.user_assets {
-                    let used = asset.locked.parse::<f64>()?;
-                    let free = asset.free.parse::<f64>()?;
+                    let used = parse_float64(&asset.locked)?;
+                    let free = parse_float64(&asset.free)?;
                     items.push(BalanceItem {
                         currency: util::to_unified_asset(asset.asset.as_str()),
                         market: None,
                         used,
                         free,
-                        debt: asset.interest.parse::<f64>()? + asset.borrowed.parse::<f64>()?,
+                        debt: parse_float64(&asset.interest)? + parse_float64(&asset.borrowed)?,
                         total: free + used,
                     });
                 }
@@ -204,24 +204,24 @@ impl Exchange for BinanceMargin {
                 let resp: FetchIsolatedAccountResponse = self.exchange_base.http_client.get("/sapi/v1/margin/isolated/account", Some(headers), Some(&query)).await?;
                 let mut items = vec![];
                 for symbol in resp.assets {
-                    let base_used = symbol.base_asset.locked.parse::<f64>()?;
-                    let base_free = symbol.base_asset.free.parse::<f64>()?;
+                    let base_used = parse_float64(&symbol.base_asset.locked)?;
+                    let base_free = parse_float64(&symbol.base_asset.free)?;
                     items.push(BalanceItem {
                         currency: util::to_unified_asset(symbol.base_asset.asset.as_str()),
                         market: self.exchange_base.unifier.get_market(&symbol.symbol),
                         used: base_used,
                         free: base_free,
-                        debt: symbol.base_asset.interest.parse::<f64>()? + symbol.base_asset.borrowed.parse::<f64>()?,
+                        debt: parse_float64(&symbol.base_asset.interest)? + parse_float64(&symbol.base_asset.borrowed)?,
                         total: base_free + base_used,
                     });
-                    let quote_used = symbol.quote_asset.locked.parse::<f64>()?;
-                    let quote_free = symbol.quote_asset.free.parse::<f64>()?;
+                    let quote_used = parse_float64(&symbol.quote_asset.locked)?;
+                    let quote_free = parse_float64(&symbol.quote_asset.free)?;
                     items.push(BalanceItem {
                         currency: util::to_unified_asset(symbol.quote_asset.asset.as_str()),
                         market: self.exchange_base.unifier.get_market(&symbol.symbol),
                         used: quote_used,
                         free: quote_free,
-                        debt: symbol.quote_asset.interest.parse::<f64>()? + symbol.quote_asset.borrowed.parse::<f64>()?,
+                        debt: parse_float64(&symbol.quote_asset.interest)? + parse_float64(&symbol.quote_asset.borrowed)?,
                         total: quote_free + quote_used,
                     });
                 }

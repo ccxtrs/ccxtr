@@ -201,11 +201,11 @@ pub trait Exchange {
 
     // private
     async fn fetch_balance(&self, _: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
-        Err(CommonError::NotImplemented)
+        Err(FetchBalanceError::NotImplemented)
     }
 
     async fn fetch_positions(&self, _: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
-        Err(Error::NotImplemented.into())
+        Err(FetchPositionsError::NotImplemented)
     }
 
     async fn create_order(&self, _: &CreateOrderParams) -> CreateOrderResult<Order> {
