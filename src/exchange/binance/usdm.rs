@@ -321,8 +321,8 @@ impl Exchange for BinanceUsdm {
                 _ => MarginMode::Isolated,
             };
             let is_hedged = match item.position_side.as_str() {
-                "BOTH" => true,
-                _ => false,
+                "BOTH" => false,
+                _ => true,
             };
 
             let side = match notional {
@@ -330,23 +330,23 @@ impl Exchange for BinanceUsdm {
                 n if n < 0.0 => PositionSide::Short,
                 _ => continue,
             };
-            let contracts = item.position_amt.parse().map_err(|_| Error::ParseError(item.position_amt))?;
+            let contracts: f64 = item.position_amt.parse::<f64>().map_err(|_| Error::ParseError(item.position_amt))?.abs();
             let liquidation_price = item.liquidation_price.parse().map_err(|_| Error::ParseError(item.liquidation_price))?;
-            let entry_price = item.entry_price.parse().map_err(|_| Error::ParseError(item.entry_price))?;
+            let entry_price: f64 = item.entry_price.parse().map_err(|_| Error::ParseError(item.entry_price))?;
             let leverage = item.leverage.parse().map_err(|_| Error::ParseError(item.leverage))?;
 
             let collateral: f64 = match margin_mode {
                 MarginMode::Cross => {
                     // walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
-                    let mmp = match side {
+                    let (mmp, entry_price) = match side {
                         PositionSide::Long => {
-                            -1f64 + maintenance_margin_percent
+                            (-1f64 + maintenance_margin_percent, entry_price)
                         }
                         PositionSide::Short => {
-                            1f64 + maintenance_margin_percent
+                            (1f64 + maintenance_margin_percent, -entry_price)
                         }
                     };
-                    (liquidation_price * mmp + entry_price) * contracts
+                    (liquidation_price * mmp + entry_price) * contracts.abs()
                 }
                 MarginMode::Isolated => item.isolated_margin.parse().map_err(|_| Error::ParseError(item.isolated_margin))?,
             };
