@@ -196,7 +196,7 @@ impl Exchange for BinanceMargin {
                     });
                 }
                 Ok(Balance {
-                    timestamp: Utc::now().timestamp_millis(),
+                    timestamp: None,
                     items,
                 })
             }
@@ -226,7 +226,7 @@ impl Exchange for BinanceMargin {
                     });
                 }
                 Ok(Balance {
-                    timestamp: Utc::now().timestamp_millis(),
+                    timestamp: None,
                     items,
                 })
             }

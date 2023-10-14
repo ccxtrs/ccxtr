@@ -721,7 +721,7 @@ pub struct MarginLoan {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Balance {
     /// Unix Timestamp in milliseconds
-    pub timestamp: i64,
+    pub timestamp: Option<i64>,
 
     /// the list of balance items
     pub items: Vec<BalanceItem>,

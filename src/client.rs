@@ -99,7 +99,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// query: `&[("foo", "a"), ("foo", "b")])` makes `"foo=a&foo=b"`
-    pub(crate) async fn get<Q: Serialize + ?Sized, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>) -> Result<T> {
+    pub(crate) async fn get<Q: Serialize + ?Sized, T: DeserializeOwned>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>) -> Result<T> {
         let mut builder = self.client.get(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);
@@ -119,7 +119,7 @@ impl HttpClient {
         Ok(response.json::<T>().await?)
     }
 
-    pub(crate) async fn post<Q: Serialize + ?Sized, B: AsRef<str>, T: DeserializeOwned + Debug>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>, body: Option<&B>) -> Result<T> {
+    pub(crate) async fn post<Q: Serialize + ?Sized, B: AsRef<str>, T: DeserializeOwned>(&self, endpoint: &str, headers: Option<Vec<(&str, &str)>>, query: Option<&Q>, body: Option<&B>) -> Result<T> {
         let mut builder = self.client.post(format!("{}:{}{}", self.host, self.port, endpoint));
         if let Some(query) = query {
             builder = builder.query(query);

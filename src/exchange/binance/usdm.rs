@@ -11,7 +11,7 @@ use crate::client::EMPTY_QUERY;
 use crate::error::*;
 use crate::exchange::*;
 use crate::util::channel::Receiver;
-use crate::util::into_precision;
+use crate::util::{into_precision, parse_float64};
 
 use super::util;
 
@@ -246,6 +246,42 @@ impl Exchange for BinanceUsdm {
         order.market = params.market.clone();
         order.order_type = order_type;
         Ok(order)
+    }
+
+    async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
+        }
+
+        if params.margin_mode.is_some() && params.margin_mode.unwrap() != MarginMode::Isolated {
+            return Err(Error::InvalidParameters("margin mode is not supported".into()).into());
+        }
+
+        let mut query = vec![];
+        let ts = Utc::now().timestamp_millis().to_string();
+        query.push(("timestamp", ts.as_str()));
+        let signature = self.auth_map(Some(&query))?;
+        query.push(("signature", signature.as_str()));
+        let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
+        let resp: FetchBalanceResponse = self.exchange_base.http_client.get("/fapi/v2/account", Some(headers), Some(&query)).await?;
+        let mut bal = Balance::default();
+        bal.timestamp = None;
+
+        for asset in resp.assets {
+            let free = parse_float64(&asset.available_balance)?;
+            let used = parse_float64(&asset.initial_margin)?;
+            let total = parse_float64(&asset.margin_balance)?;
+            let item = BalanceItem {
+                currency: util::to_unified_asset(&asset.asset),
+                market: None,
+                total,
+                free,
+                used,
+                debt: 0.0,
+            };
+            bal.items.push(item);
+        }
+        Ok(bal)
     }
 
     async fn fetch_positions(&self, params: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
@@ -647,6 +683,113 @@ struct FetchMarketsFilterResponse {
 }
 
 
+#[derive(Serialize, Deserialize, Debug)]
+struct FetchBalancePositionResponse {
+    pub symbol: String,
+    #[serde(rename = "initialMargin")]
+    pub initial_margin: String,
+    #[serde(rename = "maintMargin")]
+    pub maint_margin: String,
+    #[serde(rename = "unrealizedProfit")]
+    pub unrealized_profit: String,
+    #[serde(rename = "positionInitialMargin")]
+    pub position_initial_margin: String,
+    #[serde(rename = "openOrderInitialMargin")]
+    pub open_order_initial_margin: String,
+    pub leverage: String,
+    pub isolated: bool,
+    #[serde(rename = "entryPrice")]
+    pub entry_price: String,
+    #[serde(rename = "breakEvenPrice")]
+    pub break_even_price: Option<String>,
+    #[serde(rename = "maxNotional")]
+    pub max_notional: String,
+    #[serde(rename = "bidNotional")]
+    pub bid_notional: String,
+    #[serde(rename = "askNotional")]
+    pub ask_notional: String,
+    #[serde(rename = "positionSide")]
+    pub position_side: String,
+    #[serde(rename = "positionAmt")]
+    pub position_amt: String,
+    #[serde(rename = "updateTime")]
+    pub update_time: i64,
+}
+
+
+
+#[derive(Serialize, Deserialize, Debug)]
+struct FetchBalanceAssetResponse {
+    pub asset: String,
+    #[serde(rename = "walletBalance")]
+    pub wallet_balance: String,
+    #[serde(rename = "unrealizedProfit")]
+    pub unrealized_profit: String,
+    #[serde(rename = "marginBalance")]
+    pub margin_balance: String,
+    #[serde(rename = "maintMargin")]
+    pub maint_margin: String,
+    #[serde(rename = "initialMargin")]
+    pub initial_margin: String,
+    #[serde(rename = "positionInitialMargin")]
+    pub position_initial_margin: String,
+    #[serde(rename = "openOrderInitialMargin")]
+    pub open_order_initial_margin: String,
+    #[serde(rename = "crossWalletBalance")]
+    pub cross_wallet_balance: String,
+    #[serde(rename = "crossUnPnl")]
+    pub cross_un_pnl: String,
+    #[serde(rename = "availableBalance")]
+    pub available_balance: String,
+    #[serde(rename = "maxWithdrawAmount")]
+    pub max_withdraw_amount: String,
+    #[serde(rename = "marginAvailable")]
+    pub margin_available: bool,
+    #[serde(rename = "updateTime")]
+    pub update_time: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct FetchBalanceResponse {
+    #[serde(rename = "feeTier")]
+    pub fee_tier: i64,
+    #[serde(rename = "canTrade")]
+    pub can_trade: bool,
+    #[serde(rename = "canDeposit")]
+    pub can_deposit: bool,
+    #[serde(rename = "canWithdraw")]
+    pub can_withdraw: bool,
+    #[serde(rename = "updateTime")]
+    pub update_time: i64,
+    #[serde(rename = "multiAssetsMargin")]
+    pub multi_assets_margin: bool,
+    #[serde(rename = "tradeGroupId")]
+    pub trade_group_id: i64,
+    #[serde(rename = "totalInitialMargin")]
+    pub total_initial_margin: String,
+    #[serde(rename = "totalMaintMargin")]
+    pub total_maint_margin: String,
+    #[serde(rename = "totalWalletBalance")]
+    pub total_wallet_balance: String,
+    #[serde(rename = "totalUnrealizedProfit")]
+    pub total_unrealized_profit: String,
+    #[serde(rename = "totalMarginBalance")]
+    pub total_margin_balance: String,
+    #[serde(rename = "totalPositionInitialMargin")]
+    pub total_position_initial_margin: String,
+    #[serde(rename = "totalOpenOrderInitialMargin")]
+    pub total_open_order_initial_margin: String,
+    #[serde(rename = "totalCrossWalletBalance")]
+    pub total_cross_wallet_balance: String,
+    #[serde(rename = "totalCrossUnPnl")]
+    pub total_cross_un_pnl: String,
+    #[serde(rename = "availableBalance")]
+    pub available_balance: String,
+    #[serde(rename = "maxWithdrawAmount")]
+    pub max_withdraw_amount: String,
+    pub assets: Vec<FetchBalanceAssetResponse>,
+    pub positions: Vec<FetchBalancePositionResponse>,
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -672,7 +815,7 @@ pub struct FetchPositionsResponse {
 
 #[cfg(test)]
 mod test {
-    use crate::{BinanceUsdm, Exchange, PropertiesBuilder};
+    use crate::{BinanceUsdm, Exchange, FetchBalanceParamsBuilder, PropertiesBuilder};
     use crate::exchange::params::FetchPositionsParamsBuilder;
 
     #[tokio::test]
@@ -722,5 +865,18 @@ mod test {
                 println!("{:?}", p);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_balance() {
+        let api_key = std::env::var("BINANCE_API_KEY").expect("BINANCE_API_KEY is not set");
+        let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
+
+        let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
+        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        exchange.load_markets().await.expect("failed to load markets");
+        let params = FetchBalanceParamsBuilder::default().build().expect("failed to create params");
+        let result = exchange.fetch_balance(&params).await;
+        println!("{:?}", result);
     }
 }
