@@ -253,7 +253,7 @@ impl Exchange for BinanceUsdm {
             return Err(Error::MarketNotInitialized.into());
         }
 
-        if params.margin_mode.is_some() && params.margin_mode.unwrap() != MarginMode::Isolated {
+        if params.margin_mode.is_some() && params.margin_mode.unwrap() != MarginMode::Cross {
             return Err(Error::InvalidParameters("margin mode is not supported".into()).into());
         }
 
@@ -817,6 +817,7 @@ pub struct FetchPositionsResponse {
 mod test {
     use crate::{BinanceUsdm, Exchange, FetchBalanceParamsBuilder, PropertiesBuilder};
     use crate::exchange::params::FetchPositionsParamsBuilder;
+    use crate::model::MarginMode;
 
     #[tokio::test]
     async fn test_auth() {
@@ -875,8 +876,12 @@ mod test {
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
         let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
         exchange.load_markets().await.expect("failed to load markets");
-        let params = FetchBalanceParamsBuilder::default().build().expect("failed to create params");
+        let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().expect("failed to create params");
         let result = exchange.fetch_balance(&params).await;
-        println!("{:?}", result);
+        for item in result.unwrap().items {
+            if item.currency == "USDT" {
+                println!("{:?}", item);
+            }
+        }
     }
 }
