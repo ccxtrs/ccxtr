@@ -72,7 +72,9 @@ impl BinanceMargin {
                     }
                     _ => None,
                 };
-            })).build()?;
+            }))
+            .channel_capacity(props.channel_capacity)
+            .build()?;
 
         Ok(Self {
             exchange_base: ExchangeBase::new(&base_props)?,

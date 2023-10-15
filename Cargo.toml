@@ -10,6 +10,7 @@ repository = "https://github.com/ccxtrs/ccxtr/"
 readme = "README.md"
 
 [dependencies]
+async-broadcast = "0.5.1"
 async-trait = "0.1.68"
 chrono = "0.4.24"
 derive_builder = "0.12.0"

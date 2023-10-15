@@ -15,7 +15,7 @@ async fn main() {
     let mut order_market = None;
     for m in markets {
         match m {
-            Market { ref base, ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
+            Market {  ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
                 subscriptions.push(m.clone());
             }
             Market { ref base, ref quote, ref market_type, .. } if base == "BTC" && quote == "USDT" && *market_type == MarketType::Margin => {
@@ -34,7 +34,7 @@ async fn main() {
         println!("failed to watch order book: {:?}", stream.err().unwrap());
         return;
     }
-    let stream = stream.unwrap();
+    let mut stream = stream.unwrap();
     tokio::spawn({
         let select = select.clone();
         let selections = subscriptions.clone();

@@ -92,7 +92,7 @@ impl ExchangeBase {
             .error_parser(properties.error_parser)
             .build().unwrap();
         let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
-        let (order_book_stream_sender, order_book_stream) = flume::unbounded::<OrderBookResult<OrderBook>>();
+        let (order_book_stream_sender, order_book_stream) = async_broadcast::broadcast::<OrderBookResult<OrderBook>>(properties.channel_capacity.unwrap_or(1000));
         let order_book_stream_tx = Sender::new(order_book_stream_sender);
         let order_book_stream_rx = Receiver::new(order_book_stream);
         Ok(Self {

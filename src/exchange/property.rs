@@ -11,6 +11,7 @@ pub struct Properties {
     pub api_key: Option<String>,
     pub secret: Option<String>,
     pub ws_endpoint: Option<String>,
+    pub channel_capacity: Option<usize>,
 }
 
 
@@ -22,4 +23,5 @@ pub(crate) struct BaseProperties {
     pub(crate) ws_endpoint: Option<String>,
     pub(crate) stream_parser: Option<fn(Vec<u8>, &Unifier) -> Option<StreamItem>>,
     pub(crate) error_parser: Option<fn(String) -> Error>,
+    pub(crate) channel_capacity: Option<usize>,
 }

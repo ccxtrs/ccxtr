@@ -190,7 +190,7 @@ impl From<Error> for ConnectError {
 
 pub type OrderBookResult<T> = std::result::Result<T, OrderBookError>;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum OrderBookError {
     #[error("not implemented")]
     NotImplemented,
@@ -234,6 +234,8 @@ pub enum WatchError {
     SymbolNotFound(String),
     #[error("not connected")]
     NotConnected,
+    #[error("receiving skipped {0} messages")]
+    Overflowed(u64),
     #[error("unknown error {0}")]
     UnknownError(String),
 }
@@ -247,6 +249,21 @@ impl From<Error> for WatchError {
     }
 }
 
+
+impl From<async_broadcast::RecvError> for WatchError {
+    fn from(e: async_broadcast::RecvError) -> Self {
+        match e {
+            async_broadcast::RecvError::Overflowed(n) => WatchError::Overflowed(n),
+            async_broadcast::RecvError::Closed => WatchError::NotConnected,
+        }
+    }
+}
+
+impl<T> From<async_broadcast::SendError<T>> for WatchError {
+    fn from(e: async_broadcast::SendError<T>) -> Self {
+        WatchError::WebsocketError(format!("{}", e))
+    }
+}
 
 impl From<flume::RecvError> for WatchError {
     fn from(e: flume::RecvError) -> Self {

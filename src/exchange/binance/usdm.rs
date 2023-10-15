@@ -25,7 +25,7 @@ pub struct BinanceUsdm {
 
 impl BinanceUsdm {
     pub fn new(props: &Properties) -> CommonResult<Self> {
-        let common_props = BasePropertiesBuilder::default()
+        let base_props = BasePropertiesBuilder::default()
             .host(props.host.clone().or(Some("https://fapi.binance.com".to_string())))
             .port(props.port.or(Some(443)))
             .ws_endpoint(Some("wss://fstream.binance.com/ws".to_string()))
@@ -83,10 +83,12 @@ impl BinanceUsdm {
                     }
                     _ => return None,
                 }
-            })).build()?;
+            }))
+            .channel_capacity(props.channel_capacity)
+            .build()?;
 
         Ok(Self {
-            exchange_base: ExchangeBase::new(&common_props)?,
+            exchange_base: ExchangeBase::new(&base_props)?,
             api_key: props.api_key.clone(),
             secret: props.secret.clone(),
             leverage_brackets: None,
@@ -164,8 +166,10 @@ impl Exchange for BinanceUsdm {
                 markets.push(market);
             }
             self.exchange_base.markets = markets;
-            self.load_leverage_brackets().await?;
             self.exchange_base.connect().await?;
+        }
+        if self.api_key.is_some() && self.secret.is_some() && self.leverage_brackets.is_none() {
+            self.load_leverage_brackets().await?;
         }
         Ok(self.exchange_base.markets.clone())
     }
@@ -284,7 +288,7 @@ impl Exchange for BinanceUsdm {
         Ok(bal)
     }
 
-    async fn fetch_positions(&self, params: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
+    async fn fetch_positions(&self, _params: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
