@@ -1,4 +1,4 @@
-pub use exchange::BinanceMargin;
+pub use exchange::Binance;
 pub use exchange::BinanceUsdm;
 pub use exchange::Exchange;
 pub use exchange::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};

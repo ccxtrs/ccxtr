@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use ccxtr::{BinanceMargin, BinanceUsdm, Exchange, PropertiesBuilder};
+use ccxtr::{BinanceUsdm, Exchange, PropertiesBuilder};
 
 #[tokio::main]
 async fn main() {
@@ -30,14 +30,12 @@ async fn main() {
     });
 
 
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     tokio::spawn({
         async move {
             loop {
                 match stream.receive().await {
                     Ok(Ok(order_book)) => {
                         println!("[2] timestamp={:?} len={:?}", order_book.timestamp, stream.len());
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     }
                     Ok(Err(e)) => {
                         println!("[2] order book error={:?}", e);

@@ -1,21 +1,21 @@
 use std::sync::{Arc, atomic};
 
-use ccxtr::{BinanceMargin, CreateOrderParamsBuilder, OrderBookError, PropertiesBuilder};
+use ccxtr::{Binance, OrderBookError, PropertiesBuilder};
 use ccxtr::Exchange;
-use ccxtr::model::{MarginMode, Market, MarketType, OrderType};
+use ccxtr::model::{Market, MarketType};
 
 #[tokio::main]
 async fn main() {
     let api_key = std::env::var("API_KEY").unwrap();
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to build properties");
-    let mut ex = Arc::new(BinanceMargin::new(&props).unwrap());
+    let mut ex = Arc::new(Binance::new(&props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;
     for m in markets {
         match m {
-            Market {  ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
+            Market { ref quote, ref market_type, .. } if quote == "BTC" && *market_type == MarketType::Margin => {
                 subscriptions.push(m.clone());
             }
             Market { ref base, ref quote, ref market_type, .. } if base == "BTC" && quote == "USDT" && *market_type == MarketType::Margin => {
@@ -96,18 +96,4 @@ async fn main() {
             _ => {}
         }
     }
-}
-
-async fn create_order(ex: &mut BinanceMargin, order_market: &Market) {
-    let params = CreateOrderParamsBuilder::default()
-        .market(order_market.clone())
-        .price(Some(20000_f64))
-        .amount(0.001)
-        .margin_mode(Some(MarginMode::Cross))
-        .order_type(Some(OrderType::Limit)).build().unwrap();
-    let order = ex.create_order(&params).await.or_else(|e| {
-        println!("create order error: {:?}", e);
-        Err(e)
-    });
-    println!("order: {:?}", order);
 }

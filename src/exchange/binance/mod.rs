@@ -1,7 +1,7 @@
-pub use margin::BinanceMargin;
+pub use binance::Binance;
 pub use usdm::BinanceUsdm;
 
 mod usdm;
-mod margin;
+mod binance;
 mod util;
 

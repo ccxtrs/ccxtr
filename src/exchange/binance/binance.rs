@@ -13,13 +13,13 @@ use crate::util::{into_precision, parse_float64};
 use super::util;
 
 
-pub struct BinanceMargin {
+pub struct Binance {
     exchange_base: ExchangeBase,
     api_key: Option<String>,
     secret: Option<String>,
 }
 
-impl BinanceMargin {
+impl Binance {
     pub fn new(props: &Properties) -> CommonResult<Self> {
         let base_props = BasePropertiesBuilder::default()
             .host(props.host.clone().or(Some("https://api.binance.com".to_string())))
@@ -110,7 +110,7 @@ impl BinanceMargin {
 }
 
 #[async_trait]
-impl Exchange for BinanceMargin {
+impl Exchange for Binance {
     async fn load_markets(&mut self) -> LoadMarketResult<Vec<Market>> {
         if self.exchange_base.markets.is_empty() {
             self.exchange_base.unifier.reset();
@@ -251,9 +251,10 @@ impl Exchange for BinanceMargin {
         let amount = params.amount.to_string();
         let timestamp = timestamp.to_string();
 
-        let side_effect_type = match params.reduce_only {
-            true => "REDUCE_ONLY",
-            false => "MARGIN_BUY",
+        let side_effect_type = match (params.margin_mode, params.reduce_only) {
+            (Some(_), true) => "REDUCE_ONLY",
+            (Some(_), false) => "MARGIN_BUY",
+            (None, _) => "NO_SIDE_EFFECT",
         };
 
         let is_isolated = match matches!(params.margin_mode, Some(MarginMode::Isolated)) {
@@ -559,7 +560,11 @@ impl Into<Result<Market>> for &FetchMarketsSymbolResponse {
         let base = util::to_unified_asset(&base_id);
         let quote = util::to_unified_asset(&quote_id);
 
-        let market_type = MarketType::Margin;
+        let market_type = if self.is_margin_trading_allowed {
+            MarketType::Margin
+        } else {
+            MarketType::Spot
+        };
 
         let active = util::is_active(self.status.clone());
 
@@ -705,7 +710,7 @@ struct ErrorResponse {
 
 #[cfg(test)]
 mod test {
-    use crate::{BinanceMargin, Exchange, PropertiesBuilder};
+    use crate::{Binance, Exchange, PropertiesBuilder};
     use crate::exchange::params::FetchBalanceParamsBuilder;
     use crate::model::MarginMode;
 
@@ -716,7 +721,7 @@ mod test {
         let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
 
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
-        let exchange = BinanceMargin::new(&props).expect("failed to create exchange");
+        let exchange = Binance::new(&props).expect("failed to create exchange");
         let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().unwrap();
         let balance = exchange.fetch_balance(&params).await;
         let balance = balance.expect("failed to fetch balance");

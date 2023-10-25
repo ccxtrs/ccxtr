@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use tokio_stream::StreamExt;
 
-pub use binance::BinanceMargin;
+pub use binance::Binance;
 pub use binance::BinanceUsdm;
 pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
