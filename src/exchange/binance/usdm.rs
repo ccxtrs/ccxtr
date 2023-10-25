@@ -10,8 +10,8 @@ use sha2::Sha256;
 use crate::client::EMPTY_QUERY;
 use crate::error::*;
 use crate::exchange::*;
-use crate::util::channel::Receiver;
 use crate::util::{into_precision, parse_float64};
+use crate::util::channel::Receiver;
 
 use super::util;
 
@@ -34,7 +34,7 @@ impl BinanceUsdm {
                     Ok(error) => {
                         match error.code {
                             -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
-                            -1013 => Error::InvalidQuantity(error.msg), // Invalid quantity
+                            -1013 => Error::InvalidAmount(error.msg), // Invalid amount
                             -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
                             -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
                             -1100 => Error::InvalidParameters(error.msg), // Illegal characters found in a parameter
@@ -186,6 +186,53 @@ impl Exchange for BinanceUsdm {
             markets.push(market);
         }
         Ok(markets)
+    }
+    async fn fetch_tickers(&self, params: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
+        if !self.exchange_base.is_connected {
+            return Err(FetchTickersError::NotConnected);
+        }
+
+        let query = params.markets.as_ref().map(|markets| {
+            let s = markets.iter()
+                .map(|m| self.exchange_base.unifier.get_symbol_id(&m))
+                .filter(|s| s.is_some())
+                .map(|s| format!("\"{}\"", s.unwrap()))
+                .collect::<Vec<String>>()
+                .join(",");
+            vec![("symbols", format!("[{}]", s))]
+        });
+
+        let result: Vec<FetchTickersResponse> = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, query.as_ref()).await?;
+        let mut tickers = vec![];
+        for item in result {
+            let market = self.exchange_base.unifier.get_market(&item.symbol);
+            if market.is_none() {
+                continue;
+            }
+            let market = market.unwrap();
+            let timestamp = item.close_time;
+
+            let last = item.last_price.parse::<f64>()?;
+            let open = item.open_price.parse::<f64>()?;
+            tickers.push(Ticker {
+                base_volume: item.volume.parse::<f64>()?,
+                change: item.price_change.parse::<f64>()?,
+                close: last,
+                high: item.high_price.parse::<f64>()?,
+                last,
+                low: item.low_price.parse::<f64>()?,
+                open: open,
+                percentage: item.price_change_percent.parse::<f64>()?,
+                previous_close: None,
+                quote_volume: item.quote_volume.parse::<f64>()?,
+                average: (open + last) / 2f64,
+                market,
+                timestamp,
+                vwap: item.weighted_avg_price.parse::<f64>()?,
+                ..Default::default()
+            });
+        }
+        Ok(tickers)
     }
 
     async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
@@ -721,7 +768,6 @@ struct FetchBalancePositionResponse {
 }
 
 
-
 #[derive(Serialize, Deserialize, Debug)]
 struct FetchBalanceAssetResponse {
     pub asset: String,
@@ -817,11 +863,45 @@ pub struct FetchPositionsResponse {
 }
 
 
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FetchTickersResponse {
+    pub symbol: String,
+    #[serde(rename = "priceChange")]
+    pub price_change: String,
+    #[serde(rename = "priceChangePercent")]
+    pub price_change_percent: String,
+    #[serde(rename = "weightedAvgPrice")]
+    pub weighted_avg_price: String,
+    #[serde(rename = "lastPrice")]
+    pub last_price: String,
+    #[serde(rename = "lastQty")]
+    pub last_qty: String,
+    #[serde(rename = "openPrice")]
+    pub open_price: String,
+    #[serde(rename = "highPrice")]
+    pub high_price: String,
+    #[serde(rename = "lowPrice")]
+    pub low_price: String,
+    pub volume: String,
+    #[serde(rename = "quoteVolume")]
+    pub quote_volume: String,
+    #[serde(rename = "openTime")]
+    pub open_time: i64,
+    #[serde(rename = "closeTime")]
+    pub close_time: i64,
+    #[serde(rename = "firstId")]
+    pub first_id: i64,
+    #[serde(rename = "lastId")]
+    pub last_id: i64,
+    pub count: i64,
+}
+
+
 #[cfg(test)]
 mod test {
-    use crate::{BinanceUsdm, Exchange, FetchBalanceParamsBuilder, PropertiesBuilder};
+    use crate::{BinanceUsdm, Exchange, FetchBalanceParamsBuilder, FetchTickersParamsBuilder, PropertiesBuilder};
     use crate::exchange::params::FetchPositionsParamsBuilder;
-    use crate::model::MarginMode;
+    use crate::model::{MarginMode, MarketType};
 
     #[tokio::test]
     async fn test_auth() {
@@ -887,5 +967,17 @@ mod test {
                 println!("{:?}", item);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_tickers() {
+        let mut exchange = BinanceUsdm::new(&PropertiesBuilder::default().build().unwrap()).unwrap();
+        let markets = exchange.load_markets().await.unwrap();
+        let target_market = markets.into_iter().find(|m| m.base == "BTC" && m.quote == "USDT" && m.market_type == MarketType::Swap).unwrap();
+        let params = FetchTickersParamsBuilder::default().markets(Some(vec![target_market])).build().unwrap();
+        let tickers = exchange.fetch_tickers(&params).await;
+        tickers.unwrap().iter().for_each(|ticker| {
+            println!("{:?}", ticker);
+        });
     }
 }

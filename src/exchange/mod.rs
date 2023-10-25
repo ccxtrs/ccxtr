@@ -6,6 +6,7 @@ use tokio_stream::StreamExt;
 pub use binance::Binance;
 pub use binance::BinanceUsdm;
 pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
+pub use params::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
 pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
 pub use params::{FetchPositionsParams, FetchPositionsParamsBuilder, FetchPositionsParamsBuilderError};
 pub use property::{Properties, PropertiesBuilder, PropertiesBuilderError};
@@ -164,8 +165,8 @@ pub trait Exchange {
     async fn fetch_ticker(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn fetch_tickers(&self) -> CommonResult<()> {
-        Err(CommonError::NotImplemented)
+    async fn fetch_tickers(&self, _: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
+        Err(FetchTickersError::NotImplemented)
     }
     async fn fetch_order_book(&self) -> CommonResult<Vec<OrderBook>> {
         Err(CommonError::NotImplemented)

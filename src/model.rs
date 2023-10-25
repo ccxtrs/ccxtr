@@ -658,12 +658,12 @@ impl From<String> for OrderBook {
 #[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookUnit {
     pub price: f64,
-    pub quantity: f64,
+    pub amount: f64,
 }
 
 impl Into<(f64, f64)> for OrderBookUnit {
     fn into(self) -> (f64, f64) {
-        (self.price, self.quantity)
+        (self.price, self.amount)
     }
 }
 
@@ -671,7 +671,7 @@ impl From<(f64, f64)> for OrderBookUnit {
     fn from(value: (f64, f64)) -> Self {
         Self {
             price: value.0,
-            quantity: value.1,
+            amount: value.1,
         }
     }
 }
@@ -683,7 +683,7 @@ impl TryFrom<&Vec<String>> for OrderBookUnit {
     fn try_from(value: &Vec<String>) -> OrderBookResult<Self> {
         Ok(OrderBookUnit {
             price: value[0].parse::<f64>()?,
-            quantity: value[1].parse::<f64>()?,
+            amount: value[1].parse::<f64>()?,
         })
     }
 }
@@ -694,7 +694,7 @@ impl TryFrom<&[String; 2]> for OrderBookUnit {
     fn try_from(value: &[String; 2]) -> OrderBookResult<Self> {
         Ok(OrderBookUnit {
             price: value[0].parse::<f64>()?,
-            quantity: value[1].parse::<f64>()?,
+            amount: value[1].parse::<f64>()?,
         })
     }
 }
@@ -748,4 +748,32 @@ pub struct BalanceItem {
     /// debt
     pub debt: f64,
 
+}
+
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct Ticker {
+    pub ask: Option<f64>,
+    #[serde(rename = "askVolume")]
+    pub ask_volume: f64,
+    pub average: f64,
+    #[serde(rename = "baseVolume")]
+    pub base_volume: f64,
+    pub bid: Option<f64>,
+    #[serde(rename = "bidVolume")]
+    pub bid_volume: f64,
+    pub change: f64,
+    pub close: f64,
+    pub high: f64,
+    pub last: f64,
+    pub low: f64,
+    pub open: f64,
+    pub percentage: f64,
+    #[serde(rename = "previousClose")]
+    pub previous_close: Option<f64>,
+    #[serde(rename = "quoteVolume")]
+    pub quote_volume: f64,
+    pub market: Market,
+    pub timestamp: i64,
+    pub vwap: f64,
 }

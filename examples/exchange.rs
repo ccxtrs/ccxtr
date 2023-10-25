@@ -47,9 +47,9 @@ async fn main() {
                             println!("[{}] bid={:?}({:?}) ask={:?}({:?})",
                                      order_book.market,
                                      order_book.bids[0].price,
-                                     order_book.bids[0].quantity,
+                                     order_book.bids[0].amount,
                                      order_book.asks[0].price,
-                                     order_book.asks[0].quantity,
+                                     order_book.asks[0].amount,
                             );
                         }
                     }

@@ -7,11 +7,10 @@ use sha2::Sha256;
 use crate::client::EMPTY_BODY;
 use crate::error::*;
 use crate::exchange::*;
-use crate::util::channel::Receiver;
 use crate::util::{into_precision, parse_float64};
+use crate::util::channel::Receiver;
 
 use super::util;
-
 
 pub struct Binance {
     exchange_base: ExchangeBase,
@@ -30,7 +29,7 @@ impl Binance {
                     Ok(error) => {
                         match error.code {
                             -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
-                            -1013 => Error::InvalidQuantity(error.msg), // Invalid quantity
+                            -1013 => Error::InvalidAmount(error.msg), // Invalid amount
                             -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
                             -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
                             -1100 => Error::InvalidParameters(error.msg), // Illegal characters found in a parameter
@@ -56,11 +55,35 @@ impl Binance {
                         ))));
                     }
                     let market = market.unwrap();
-                    let bid_price = bid_price.parse::<f64>().unwrap();
-                    let bid_quantity = bid_quantity.parse::<f64>().unwrap();
-                    let ask_price = ask_price.parse::<f64>().unwrap();
-                    let ask_quantity = ask_quantity.parse::<f64>().unwrap();
-                    let book = OrderBook::new(vec![(bid_price, bid_quantity).into()], vec![(ask_price, ask_quantity).into()], market, None, Some(order_book_update_id));
+                    let bid_price = bid_price.parse::<f64>();
+                    if bid_price.is_err() {
+                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            format!("Invalid bid price. symbol={}, price={}", symbol, bid_price.unwrap_err()), None,
+                        ))));
+                    }
+                    let bid_price = bid_price.unwrap();
+                    let bid_amount = bid_quantity.parse::<f64>();
+                    if bid_amount.is_err() {
+                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            format!("Invalid bid amount. symbol={}, amount={}", symbol, bid_amount.unwrap_err()), None,
+                        ))));
+                    }
+                    let bid_amount = bid_amount.unwrap();
+                    let ask_price = ask_price.parse::<f64>();
+                    if ask_price.is_err() {
+                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            format!("Invalid ask price. symbol={}, price={}", symbol, ask_price.unwrap_err()), None,
+                        ))));
+                    }
+                    let ask_price = ask_price.unwrap();
+                    let ask_amount = ask_quantity.parse::<f64>();
+                    if ask_amount.is_err() {
+                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            format!("Invalid ask amount. symbol={}, amount={}", symbol, ask_amount.unwrap_err()), None,
+                        ))));
+                    }
+                    let ask_amount = ask_amount.unwrap();
+                    let book = OrderBook::new(vec![(bid_price, bid_amount).into()], vec![(ask_price, ask_amount).into()], market, None, Some(order_book_update_id));
                     return Some(StreamItem::OrderBook(Ok(book)));
                 }
 
@@ -139,6 +162,57 @@ impl Exchange for Binance {
         Ok(markets)
     }
 
+    async fn fetch_tickers(&self, params: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
+        if !self.exchange_base.is_connected {
+            return Err(FetchTickersError::NotConnected);
+        }
+
+        let query = params.markets.as_ref().map(|markets| {
+            let s = markets.iter()
+                .map(|m| self.exchange_base.unifier.get_symbol_id(&m))
+                .filter(|s| s.is_some())
+                .map(|s| format!("\"{}\"", s.unwrap()))
+                .collect::<Vec<String>>()
+                .join(",");
+            vec![("symbols", format!("[{}]", s))]
+        });
+
+        let result: Vec<FetchTickersResponse> = self.exchange_base.http_client.get("/api/v3/ticker/24hr", None, query.as_ref()).await?;
+        let mut tickers = vec![];
+        for item in result {
+            let market = self.exchange_base.unifier.get_market(&item.symbol);
+            if market.is_none() {
+                continue;
+            }
+            let market = market.unwrap();
+            let timestamp = item.close_time;
+
+            let last = item.last_price.parse::<f64>()?;
+            let open = item.open_price.parse::<f64>()?;
+            tickers.push(Ticker {
+                ask: Some(item.ask_price.parse::<f64>()?),
+                ask_volume: item.ask_qty.parse::<f64>()?,
+                bid: Some(item.bid_price.parse::<f64>()?),
+                bid_volume: item.bid_qty.parse::<f64>()?,
+                average: (last + open) / 2.0,
+                change: item.price_change.parse::<f64>()?,
+                close: last,
+                high: item.high_price.parse::<f64>()?,
+                last,
+                low: item.low_price.parse::<f64>()?,
+                open,
+                percentage: item.price_change_percent.parse::<f64>()?,
+                previous_close: Some(item.prev_close_price.parse::<f64>()?),
+                base_volume: item.volume.parse::<f64>()?,
+                quote_volume: item.quote_volume.parse::<f64>()?,
+                market,
+                timestamp,
+                vwap: item.weighted_avg_price.parse::<f64>()?,
+            });
+        }
+        Ok(tickers)
+    }
+
     async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
@@ -168,6 +242,7 @@ impl Exchange for Binance {
 
         Ok(self.exchange_base.order_book_stream_rx.clone())
     }
+
 
     async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
         if self.api_key.is_none() || self.secret.is_none() {
@@ -517,6 +592,49 @@ struct FetchMarketsResponse {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FetchTickersResponse {
+    pub symbol: String,
+    #[serde(rename = "priceChange")]
+    pub price_change: String,
+    #[serde(rename = "priceChangePercent")]
+    pub price_change_percent: String,
+    #[serde(rename = "weightedAvgPrice")]
+    pub weighted_avg_price: String,
+    #[serde(rename = "prevClosePrice")]
+    pub prev_close_price: String,
+    #[serde(rename = "lastPrice")]
+    pub last_price: String,
+    #[serde(rename = "lastQty")]
+    pub last_qty: String,
+    #[serde(rename = "bidPrice")]
+    pub bid_price: String,
+    #[serde(rename = "bidQty")]
+    pub bid_qty: String,
+    #[serde(rename = "askPrice")]
+    pub ask_price: String,
+    #[serde(rename = "askQty")]
+    pub ask_qty: String,
+    #[serde(rename = "openPrice")]
+    pub open_price: String,
+    #[serde(rename = "highPrice")]
+    pub high_price: String,
+    #[serde(rename = "lowPrice")]
+    pub low_price: String,
+    pub volume: String,
+    #[serde(rename = "quoteVolume")]
+    pub quote_volume: String,
+    #[serde(rename = "openTime")]
+    pub open_time: i64,
+    #[serde(rename = "closeTime")]
+    pub close_time: i64,
+    #[serde(rename = "firstId")]
+    pub first_id: i64,
+    #[serde(rename = "lastId")]
+    pub last_id: i64,
+    pub count: i64,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct FetchMarketsSymbolResponse {
     pub symbol: String,
     pub status: Option<String>,
@@ -710,7 +828,7 @@ struct ErrorResponse {
 
 #[cfg(test)]
 mod test {
-    use crate::{Binance, Exchange, PropertiesBuilder};
+    use crate::{Binance, Exchange, FetchTickersParamsBuilder, PropertiesBuilder};
     use crate::exchange::params::FetchBalanceParamsBuilder;
     use crate::model::MarginMode;
 
@@ -730,6 +848,18 @@ mod test {
                 return;
             }
             println!("{:?}", item);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_fetch_tickers() {
+        let mut exchange = Binance::new(&PropertiesBuilder::default().build().unwrap()).unwrap();
+        let markets = exchange.load_markets().await.unwrap();
+        let target_market = markets.into_iter().find(|m| m.base == "BTC" && m.quote == "USDT").unwrap();
+        let params = FetchTickersParamsBuilder::default().markets(Some(vec![target_market])).build().unwrap();
+        let tickers = exchange.fetch_tickers(&params).await;
+        tickers.unwrap().iter().for_each(|ticker| {
+            println!("{:?}", ticker);
         });
     }
 }

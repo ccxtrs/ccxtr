@@ -24,7 +24,7 @@ pub(crate) enum Error {
     SymbolNotFound(String),
     InvalidPrice(String),
     InvalidMarket,
-    InvalidQuantity(String),
+    InvalidAmount(String),
     InvalidCredentials,
     InvalidParameters(String),
     InvalidSignature(String),
@@ -156,7 +156,7 @@ impl From<Error> for CommonError {
             Error::InvalidOrderBook(e) => CommonError::InvalidOrderBook(e),
             Error::InsufficientMargin(e) => CommonError::InsufficientMargin(e),
             Error::InvalidPrice(e) => CommonError::InvalidPrice(e),
-            Error::InvalidQuantity(e) => CommonError::InvalidPrice(e),
+            Error::InvalidAmount(e) => CommonError::InvalidPrice(e),
             Error::InvalidSignature(e) => CommonError::InvalidPrice(e),
             Error::InvalidParameters(e) => CommonError::InvalidPrice(e),
             Error::InvalidMarket => CommonError::InvalidMarket,
@@ -397,3 +397,31 @@ impl From<Error> for FetchPositionsError {
     }
 }
 
+pub type FetchTickersResult<T> = std::result::Result<T, FetchTickersError>;
+
+#[derive(Error, Debug)]
+pub enum FetchTickersError {
+    #[error("not implemented")]
+    NotImplemented,
+    #[error("not connected")]
+    NotConnected,
+    #[error("parse error {0}")]
+    ParseError(String),
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
+impl From<Error> for FetchTickersError {
+    fn from(e: Error) -> Self {
+        match e {
+            _ => FetchTickersError::UnknownError(format!("{:?}", e)),
+        }
+    }
+}
+
+
+impl From<ParseFloatError> for FetchTickersError {
+    fn from(e: ParseFloatError) -> Self {
+        FetchTickersError::ParseError(format!("{}", e))
+    }
+}

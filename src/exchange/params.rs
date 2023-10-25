@@ -9,12 +9,16 @@ pub struct FetchBalanceParams {
 }
 
 
+#[derive(Default, Builder, Debug)]
+#[builder(default)]
+pub struct FetchTickersParams {
+    pub markets: Option<Vec<Market>>,
+}
+
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
-pub struct FetchPositionsParams {
-}
-
+pub struct FetchPositionsParams {}
 
 
 #[derive(Builder, Debug)]
