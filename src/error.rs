@@ -222,6 +222,8 @@ impl From<ParseFloatError> for OrderBookError {
 }
 
 
+pub type WatchOrderBookResult<T> = WatchResult<T>;
+pub type WatchOrderBookError = WatchError;
 pub type WatchResult<T> = std::result::Result<T, WatchError>;
 
 #[derive(Error, Debug)]

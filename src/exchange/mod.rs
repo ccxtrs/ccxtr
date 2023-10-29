@@ -5,6 +5,7 @@ use tokio_stream::StreamExt;
 
 pub use binance::Binance;
 pub use binance::BinanceUsdm;
+pub use params::{WatchOrderBookParams, WatchOrderBookParamsBuilder, WatchOrderBookParamsBuilderError};
 pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use params::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
 pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
@@ -65,7 +66,7 @@ pub struct ExchangeBase {
     pub(super) ws_client: WsClient,
     pub(super) is_connected: bool,
 
-    stream_parser: fn(Vec<u8>, &Unifier) -> Option<StreamItem>,
+    stream_parser: fn(&[u8], &Unifier) -> Option<StreamItem>,
 
     order_book_stream_tx: Sender<OrderBookResult<OrderBook>>,
     order_book_stream_rx: Receiver<OrderBookResult<OrderBook>>,
@@ -113,31 +114,29 @@ impl ExchangeBase {
             return Err(Error::MissingMarkets);
         }
         self.ws_client.connect().await?;
-        let mut ws_rx = self.ws_client.receiver();
+        let mut ws_rx = self.ws_client.receiver().ok_or(Error::WebsocketError("receiver is None".into()))?;
         let stream_parser = self.stream_parser;
         let order_book_stream_tx = self.order_book_stream_tx.clone();
 
         let unifier = self.unifier.clone();
-        tokio::spawn({
-            async move {
-                loop {
-                    let message = ws_rx.as_mut().unwrap().next().await;
-                    match message {
-                        Some(message) => {
-                            match stream_parser(message.unwrap(), &unifier) {
-                                None => {
-                                    continue;
-                                }
-                                Some(StreamItem::OrderBook(order_book)) => {
-                                    let _ = order_book_stream_tx.send(order_book).await;
-                                }
+        tokio::spawn(async move {
+            loop {
+                let message = ws_rx.next().await;
+                match message {
+                    Some(message) => {
+                        match stream_parser(message.unwrap().as_slice(), &unifier) {
+                            None => {
+                                continue;
+                            }
+                            Some(StreamItem::OrderBook(order_book)) => {
+                                let _ = order_book_stream_tx.send(order_book).await;
                             }
                         }
-                        None => {
-                            break;
-                        }
-                    };
-                }
+                    }
+                    None => {
+                        break;
+                    }
+                };
             }
         });
         self.is_connected = true;
@@ -187,7 +186,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&self, _: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, _: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver<OrderBookResult<OrderBook>>> {
         Err(WatchError::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> WatchResult<()> {

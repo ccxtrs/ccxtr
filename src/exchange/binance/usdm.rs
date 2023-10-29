@@ -46,13 +46,13 @@ impl BinanceUsdm {
                 }
             }))
             .stream_parser(Some(|message, unifier| {
-                let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
+                let common_message = WatchCommonResponse::try_from(message.to_vec()).ok()?;
                 if common_message.result.is_some() { // subscription response
                     return None;
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
-                        let resp = WatchOrderBookResponse::from(message);
+                        let resp = WatchOrderBookResponse::from(message.to_vec());
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
                             return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
@@ -235,7 +235,8 @@ impl Exchange for BinanceUsdm {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+        let markets = &params.markets;
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }

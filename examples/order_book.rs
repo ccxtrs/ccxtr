@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use ccxtr::{BinanceUsdm, Exchange, PropertiesBuilder};
+use ccxtr::{BinanceUsdm, Exchange, PropertiesBuilder, WatchOrderBookParamsBuilder};
 
 #[tokio::main]
 async fn main() {
@@ -7,7 +7,8 @@ async fn main() {
     let mut ex = Arc::new(BinanceUsdm::new(&props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let markets = markets.into_iter().filter(|m| m.quote == "USDT" && m.base == "BTC").collect::<Vec<_>>();
-    let mut stream = ex.watch_order_book(&markets).await.expect("failed to watch order book");
+    let params = WatchOrderBookParamsBuilder::default().markets(markets.clone()).build().expect("failed to build params");
+    let mut stream = ex.watch_order_book(&params).await.expect("failed to watch order book");
 
 
     tokio::spawn({

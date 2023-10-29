@@ -41,7 +41,7 @@ impl Binance {
                 }
             }))
             .stream_parser(Some(|message, unifier| {
-                let common_message = WatchCommonResponse::try_from(message.clone()).ok()?;
+                let common_message = WatchCommonResponse::try_from(message.to_vec()).ok()?;
                 if common_message.result.is_some() { // subscription result
                     return None;
                 }
@@ -213,7 +213,8 @@ impl Exchange for Binance {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, markets: &Vec<Market>) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &WatchOrderBookParams) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+        let markets = &markets.markets;
         if !self.exchange_base.is_connected {
             return Err(WatchError::NotConnected);
         }
