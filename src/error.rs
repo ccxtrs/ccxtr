@@ -73,6 +73,7 @@ impl<T> From<PoisonError<T>> for Error {
 pub type CommonResult<T> = std::result::Result<T, CommonError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum CommonError {
     #[error("not implemented")]
     NotImplemented,
@@ -169,6 +170,7 @@ impl From<Error> for CommonError {
 pub type ConnectResult<T> = std::result::Result<T, ConnectError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ConnectError {
     #[error("not implemented")]
     NotImplemented,
@@ -191,6 +193,7 @@ impl From<Error> for ConnectError {
 pub type OrderBookResult<T> = std::result::Result<T, OrderBookError>;
 
 #[derive(Error, Debug, Clone)]
+#[non_exhaustive]
 pub enum OrderBookError {
     #[error("not implemented")]
     NotImplemented,
@@ -227,6 +230,7 @@ pub type WatchOrderBookError = WatchError;
 pub type WatchResult<T> = std::result::Result<T, WatchError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum WatchError {
     #[error("not implemented")]
     NotImplemented,
@@ -283,6 +287,7 @@ impl<T> From<flume::SendError<T>> for WatchError {
 pub type CreateOrderResult<T> = std::result::Result<T, CreateOrderError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum CreateOrderError {
     #[error("insufficient margin {0}")]
     InsufficientMargin(String),
@@ -317,6 +322,7 @@ impl From<Error> for CreateOrderError {
 pub type LoadMarketResult<T> = std::result::Result<T, LoadMarketError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum LoadMarketError {
     #[error("not implemented")]
     NotImplemented,
@@ -336,6 +342,7 @@ impl From<Error> for LoadMarketError {
 pub type FetchMarketResult<T> = std::result::Result<T, FetchMarketError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum FetchMarketError {
     #[error("not implemented")]
     NotImplemented,
@@ -364,6 +371,7 @@ impl From<FetchMarketError> for LoadMarketError {
 pub type FetchBalanceResult<T> = std::result::Result<T, FetchBalanceError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum FetchBalanceError {
     #[error("not implemented")]
     NotImplemented,
@@ -383,6 +391,7 @@ impl From<Error> for FetchBalanceError {
 pub type FetchPositionsResult<T> = std::result::Result<T, FetchPositionsError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum FetchPositionsError {
     #[error("not implemented")]
     NotImplemented,
@@ -402,6 +411,7 @@ impl From<Error> for FetchPositionsError {
 pub type FetchTickersResult<T> = std::result::Result<T, FetchTickersError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum FetchTickersError {
     #[error("not implemented")]
     NotImplemented,

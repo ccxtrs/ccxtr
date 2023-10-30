@@ -4,6 +4,7 @@ use crate::model::{MarginMode, Market, OrderSide, OrderType, TimeInForce};
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
+#[non_exhaustive]
 pub struct WatchOrderBookParams {
     pub markets: Vec<Market>,
 }
@@ -11,6 +12,7 @@ pub struct WatchOrderBookParams {
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
+#[non_exhaustive]
 pub struct FetchBalanceParams {
     pub margin_mode: Option<MarginMode>,
 }
@@ -18,6 +20,7 @@ pub struct FetchBalanceParams {
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
+#[non_exhaustive]
 pub struct FetchTickersParams {
     pub markets: Option<Vec<Market>>,
 }
@@ -25,11 +28,13 @@ pub struct FetchTickersParams {
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
+#[non_exhaustive]
 pub struct FetchPositionsParams {}
 
 
 #[derive(Builder, Debug)]
 #[builder(default)]
+#[non_exhaustive]
 pub struct CreateOrderParams {
     pub market: Market,
     pub price: Option<f64>,

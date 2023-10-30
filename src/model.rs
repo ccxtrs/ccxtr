@@ -19,6 +19,7 @@ pub enum ContractType {
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum MarketType {
     Spot,
     Margin,
@@ -49,6 +50,7 @@ impl Display for MarketType {
 
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum FeeSide {
     Get,
     Give,
@@ -58,6 +60,7 @@ pub enum FeeSide {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum MarketFee {
     TakerBasisPoints(f64),
     MakerBasisPoints(f64),
@@ -67,6 +70,7 @@ pub enum MarketFee {
 
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Market {
     /// uppercase string, unified base currency code, 3 or more letters
     pub base: String,
@@ -169,6 +173,7 @@ impl Eq for Market {}
 
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Precision {
     /// number of decimal digits after the decimal point
     pub price: Option<isize>,
@@ -182,6 +187,7 @@ pub struct Precision {
 
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct MarketLimit {
     pub amount: Option<Range>,
     pub price: Option<Range>,
@@ -192,6 +198,7 @@ pub struct MarketLimit {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Currency {
     /// An uppercase string code representation of a particular currency. Currency codes are used
     /// to reference currencies within the ccxtr library.
@@ -234,6 +241,7 @@ pub struct Range {
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct CurrencyLimit {
     pub amount: Option<Range>,
     pub withdraw: Option<Range>,
@@ -241,6 +249,7 @@ pub struct CurrencyLimit {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Network {
     /// An uppercase string representation of a particular network. Networks are used to reference
     /// networks within the ccxtr library.
@@ -274,6 +283,7 @@ pub struct Network {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Position {
     /// string, position id to reference the position, similar to an order id
     pub id: Option<String>,
@@ -354,6 +364,7 @@ impl Default for PositionSide {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct BorrowInterest {
     /// The market that the interest was accrued in. None for cross margin.
     pub market: Option<Market>,
@@ -376,6 +387,7 @@ pub struct BorrowInterest {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Order {
     ///  The string ID of the order within the exchange.
     pub id: Option<String>,
@@ -432,6 +444,7 @@ pub struct Order {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Trade {
     /// trade id
     pub id: String,
@@ -475,6 +488,7 @@ pub struct Trade {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct OrderFee {
     /// which currency the fee is (usually quote)
     currency: String,
@@ -519,6 +533,7 @@ impl Into<String> for OrderSide {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum TimeInForce {
     /// Good Till Cancel(ed), the order stays on the orderbook until it is matched or canceled.
     GTC,
@@ -540,6 +555,7 @@ pub enum TimeInForce {
 
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum MarginMode {
     Cross,
     Isolated,
@@ -553,6 +569,7 @@ impl Default for MarginMode {
 
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum OrderType {
     /// regular orders having an amount in base currency (how much you want to buy or sell) and a
     /// price in quote currency (for which price you want to buy or sell).
@@ -599,6 +616,7 @@ impl Default for OrderType {
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum OrderStatus {
     Open,
     Closed,
@@ -616,6 +634,7 @@ impl Default for OrderStatus {
 
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct OrderBook {
     pub bids: Vec<OrderBookUnit>,
     pub asks: Vec<OrderBookUnit>,
@@ -700,6 +719,7 @@ impl TryFrom<&[String; 2]> for OrderBookUnit {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct MarginLoan {
     /// the transaction id
     pub id: String,
@@ -719,6 +739,7 @@ pub struct MarginLoan {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Balance {
     /// Unix Timestamp in milliseconds
     pub timestamp: Option<i64>,
@@ -729,6 +750,7 @@ pub struct Balance {
 
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct BalanceItem {
     /// currency code
     pub currency: String,
@@ -752,6 +774,7 @@ pub struct BalanceItem {
 
 
 #[derive(Serialize, Deserialize, Debug, Default)]
+#[non_exhaustive]
 pub struct Ticker {
     pub ask: Option<f64>,
     #[serde(rename = "askVolume")]
