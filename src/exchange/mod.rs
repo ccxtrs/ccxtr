@@ -30,13 +30,9 @@ pub enum StreamItem {
 
 pub struct ExchangeBase {
     pub(super) http_client: HttpClient,
-    pub(super) ws_client: WsClient,
-    pub(super) is_connected: bool,
+    pub(super) ws_endpoint: Option<String>,
 
     stream_parser: fn(&[u8], &Unifier) -> Option<StreamItem>,
-
-    order_book_stream_tx: Sender<OrderBookResult<OrderBook>>,
-    order_book_stream_rx: Receiver<OrderBookResult<OrderBook>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -60,55 +56,48 @@ impl ExchangeBase {
             .port(properties.port.clone().unwrap())
             .error_parser(properties.error_parser)
             .build().unwrap();
-        let ws_client = WsClient::new(properties.ws_endpoint.clone().unwrap().as_str());
-        let (order_book_stream_sender, order_book_stream) = async_broadcast::broadcast::<OrderBookResult<OrderBook>>(properties.channel_capacity.unwrap_or(1000));
-        let order_book_stream_tx = Sender::new(order_book_stream_sender);
-        let order_book_stream_rx = Receiver::new(order_book_stream);
         Ok(Self {
             markets: vec![],
             unifier: Unifier::new(),
-            ws_client,
+            ws_endpoint: properties.ws_endpoint.clone(),
             http_client,
             stream_parser: properties.stream_parser.unwrap_or(|_, _| None),
-            order_book_stream_tx,
-            order_book_stream_rx,
-            is_connected: false,
         })
     }
 
-    pub(crate) async fn connect(&mut self) -> Result<()> {
-        if self.markets.is_empty() {
-            return Err(Error::MissingMarkets);
-        }
-        self.ws_client.connect().await?;
-        let mut ws_rx = self.ws_client.receiver().ok_or(Error::WebsocketError("receiver is None".into()))?;
-        let stream_parser = self.stream_parser;
-        let order_book_stream_tx = self.order_book_stream_tx.clone();
-
-        let unifier = self.unifier.clone();
-        tokio::spawn(async move {
-            loop {
-                let message = ws_rx.next().await;
-                match message {
-                    Some(message) => {
-                        match stream_parser(message.unwrap().as_slice(), &unifier) {
-                            None => {
-                                continue;
-                            }
-                            Some(StreamItem::OrderBook(order_book)) => {
-                                let _ = order_book_stream_tx.send(order_book).await;
-                            }
-                        }
-                    }
-                    None => {
-                        break;
-                    }
-                };
-            }
-        });
-        self.is_connected = true;
-        Ok(())
-    }
+    // pub(crate) async fn connect(&mut self) -> Result<()> {
+    //     if self.markets.is_empty() {
+    //         return Err(Error::MissingMarkets);
+    //     }
+    //     self.ws_client.connect().await?;
+    //     let mut ws_rx = self.ws_client.receiver().ok_or(Error::WebsocketError("receiver is None".into()))?;
+    //     let stream_parser = self.stream_parser;
+    //     let order_book_stream_tx = self.order_book_stream_tx.clone();
+    //
+    //     let unifier = self.unifier.clone();
+    //     tokio::spawn(async move {
+    //         loop {
+    //             let message = ws_rx.next().await;
+    //             match message {
+    //                 Some(message) => {
+    //                     match stream_parser(message.unwrap().as_slice(), &unifier) {
+    //                         None => {
+    //                             continue;
+    //                         }
+    //                         Some(StreamItem::OrderBook(order_book)) => {
+    //                             let _ = order_book_stream_tx.send(order_book).await;
+    //                         }
+    //                     }
+    //                 }
+    //                 None => {
+    //                     break;
+    //                 }
+    //             };
+    //         }
+    //     });
+    //     self.is_connected = true;
+    //     Ok(())
+    // }
 }
 
 

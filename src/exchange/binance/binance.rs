@@ -146,7 +146,6 @@ impl Exchange for Binance {
                 }
             }
             self.exchange_base.markets = markets;
-            self.exchange_base.connect().await?;
         }
         Ok(self.exchange_base.markets.clone())
     }
@@ -163,8 +162,8 @@ impl Exchange for Binance {
     }
 
     async fn fetch_tickers(&self, params: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
-        if !self.exchange_base.is_connected {
-            return Err(FetchTickersError::NotConnected);
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
         }
 
         let query = params.markets.as_ref().map(|markets| {
@@ -214,17 +213,21 @@ impl Exchange for Binance {
     }
 
     async fn watch_order_book(&self, markets: &WatchOrderBookParams) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
-        let markets = &markets.markets;
-        if !self.exchange_base.is_connected {
-            return Err(WatchError::NotConnected);
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
         }
+
+        let markets = &markets.markets;
 
         if markets.len() == 0 {
-            return Ok(self.exchange_base.order_book_stream_rx.clone());
+            return Err(Error::MissingMarkets.into())?;
         }
 
-        let sender = self.exchange_base.ws_client.sender()
+        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str());
+
+        let tx = ws_client.sender()
             .ok_or(Error::WebsocketError("no sender".into()))?;
+
 
         let mut symbol_ids: Vec<String> = Vec::new();
         for m in markets {
@@ -239,15 +242,22 @@ impl Exchange for Binance {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        sender.send_async(stream_name).await?;
+        tx.send_async(stream_name).await?;
 
-        Ok(self.exchange_base.order_book_stream_rx.clone())
+        let rx = ws_client.receiver()
+            .ok_or(Error::WebsocketError("no receiver".into()))?;
+
+        let ch = async_broadcast::broadcast(1000);
+        Ok(rx)
     }
 
 
     async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials)?;
+        }
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized)?;
         }
 
         let ts = Utc::now().timestamp_millis().to_string();
@@ -316,6 +326,11 @@ impl Exchange for Binance {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials)?;
         }
+
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized)?;
+        }
+
         let order_type = params.order_type.unwrap_or_default();
         if params.price.is_none() && order_type == OrderType::Limit {
             return Err(Error::InvalidPrice("price is required for limit orders".into()).into());

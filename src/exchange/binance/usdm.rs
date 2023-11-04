@@ -166,7 +166,6 @@ impl Exchange for BinanceUsdm {
                 markets.push(market);
             }
             self.exchange_base.markets = markets;
-            self.exchange_base.connect().await?;
         }
         if self.api_key.is_some() && self.secret.is_some() && self.leverage_brackets.is_none() {
             self.load_leverage_brackets().await?;
@@ -188,8 +187,8 @@ impl Exchange for BinanceUsdm {
         Ok(markets)
     }
     async fn fetch_tickers(&self, params: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
-        if !self.exchange_base.is_connected {
-            return Err(FetchTickersError::NotConnected);
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
         }
 
         let query = params.markets.as_ref().map(|markets| {
@@ -235,18 +234,20 @@ impl Exchange for BinanceUsdm {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver<OrderBookResult<OrderBook>>> {
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
+        }
+
         let markets = &params.markets;
-        if !self.exchange_base.is_connected {
-            return Err(WatchError::NotConnected);
-        }
-
         if markets.len() == 0 {
-            return Ok(self.exchange_base.order_book_stream_rx.clone());
+            return Err(Error::InvalidParameters("markets is empty".into()).into());
         }
 
-        let sender = self.exchange_base.ws_client.sender()
-            .ok_or(Error::WebsocketError("no sender".into()))?;
+        if self.exchange_base.ws_endpoint.is_none() {
+            return Err(Error::InvalidParameters("ws endpoint is empty".into()).into());
+        }
+
 
         let mut symbol_ids: Vec<String> = Vec::new();
         for m in markets {
@@ -261,9 +262,10 @@ impl Exchange for BinanceUsdm {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        sender.send_async(stream_name).await?;
-
-        Ok(self.exchange_base.order_book_stream_rx.clone())
+        
+        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str());
+        ws_client.send(stream_name).await?;
+        Ok(ws_client.receiver())
     }
 
     async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {

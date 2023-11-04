@@ -23,7 +23,7 @@ pub(crate) struct WsClient {
     endpoint: String,
 
     sender: Option<flume::Sender<String>>,
-    receiver: Option<MappedReceiveStream>,
+    receiver: Option<flume::Receiver<String>>,
 }
 
 impl From<io::Error> for Error {
@@ -37,19 +37,25 @@ impl WsClient {
     pub fn new(endpoint: &str) -> Self {
         Self {
             endpoint: endpoint.to_string(),
-            sender: None,
-            receiver: None,
         }
+    }
+
+    pub(crate) async fn send(&self, msg: String) -> Result<()> {
+        let (mut stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
+        stream.send(Message::Text(msg)).await?;
+        stream.next()
+        Ok(())
     }
 
     pub(crate) async fn connect(&mut self) -> Result<&Self> {
         let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
-        let (mut ws_tx, ws_rx) = stream.split();
-        let (req_tx, req_rx) = flume::unbounded::<String>();
+        let (mut ws_tx, mut ws_rx) = stream.split();
+        let (tx, rx) = flume::unbounded::<String>();
         tokio::spawn({
+            let rx = rx.clone();
             async move {
                 loop {
-                    let req = req_rx.recv_async().await;
+                    let req = rx.recv_async().await;
                     match req {
                         Ok(x) => {
                             let _ = ws_tx.send(Message::Text(x)).await;
@@ -62,14 +68,24 @@ impl WsClient {
             }
         });
 
-        let rx: MappedReceiveStream = ws_rx.map(|x| {
-            match x {
-                Ok(x) => Ok(x.into_data()),
-                Err(e) => Err(Error::WebsocketError(format!("{}", e)))
+        tokio::spawn({
+            let tx = tx.clone();
+            async move {
+                loop {
+                    let resp = ws_rx.next().await;
+                    match resp {
+                        Some(Ok(x)) => {
+                            let _ = tx.send_async(x.to_string()).await;
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
             }
         });
 
-        self.sender = Some(req_tx);
+        self.sender = Some(tx);
         self.receiver = Some(rx);
         Ok(self)
     }
@@ -78,8 +94,8 @@ impl WsClient {
         self.sender.clone()
     }
 
-    pub(crate) fn receiver(&mut self) -> Option<MappedReceiveStream> {
-        self.receiver.take()
+    pub(crate) fn receiver(&mut self) -> Option<flume::Receiver<String>> {
+        self.receiver.clone()
     }
 }
 
