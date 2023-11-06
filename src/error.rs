@@ -38,6 +38,7 @@ pub(crate) enum Error {
 
     InvalidOrderBook(String),
     InvalidResponse(String),
+    StreamError(String),
     SynchronizationError,
 
     InsufficientMargin(String),
@@ -240,6 +241,14 @@ pub enum WatchError {
     SymbolNotFound(String),
     #[error("not connected")]
     NotConnected,
+    #[error("error response {0}")]
+    ErrorResponse(String),
+    #[error("invalid response {0}")]
+    InvalidResponse(String),
+    #[error("parse error {0}")]
+    DeserializeJsonBody(String),
+    #[error("stream error {0}")]
+    StreamError(String),
     #[error("unknown error {0}")]
     UnknownError(String),
 }
@@ -248,6 +257,7 @@ pub enum WatchError {
 impl From<Error> for WatchError {
     fn from(err: Error) -> Self {
         match err {
+            Error::DeserializeJsonBody(e) => WatchError::InvalidResponse(e),
             _ => WatchError::UnknownError(format!("{:?}", err)),
         }
     }

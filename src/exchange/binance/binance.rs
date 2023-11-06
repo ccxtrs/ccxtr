@@ -42,6 +42,10 @@ impl Binance {
             }))
             .stream_parser(Some(|message, unifier| {
                 let common_message = WatchCommonResponse::try_from(message.to_vec())?;
+                if common_message.code.is_some() && common_message.msg.is_some() { // error message
+                    return Err(Error::StreamError(format!("code={}, msg={}", common_message.code.unwrap(), common_message.msg.unwrap())))?;
+                }
+
                 if common_message.id.is_some() { // subscription result
                     let id = common_message.id.ok_or(Error::InvalidResponse("id is not found".into()))?;
                     return Ok(Some(StreamItem::Subscribed(id)));
@@ -439,6 +443,8 @@ impl TryFrom<CreateOrderResponse> for Order {
 struct WatchCommonResponse {
     result: Option<String>,
     id: Option<i64>,
+    code: Option<i64>,
+    msg: Option<String>,
     #[serde(rename = "e")]
     event_type: Option<String>,
 
