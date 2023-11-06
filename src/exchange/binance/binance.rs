@@ -231,16 +231,19 @@ impl Exchange for Binance {
                 None => return Err(WatchError::SymbolNotFound(format!("{:?}", m))),
             }
         }
-        let params = symbol_ids.iter()
-            .map(|s| format!("\"{}@bookTicker\"", s.to_lowercase()))
-            .collect::<Vec<String>>()
-            .join(",");
 
-        let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-
-        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
-        let _ = ws_client.send(stream_name).await?;
-        Ok(Receiver::new(ws_client))
+        let mut clients = vec![];
+        for symbol_ids in symbol_ids.chunks(100) {
+            let params = symbol_ids.iter()
+                    .map(|s| format!("\"{}@bookTicker\"", s.to_lowercase()))
+                    .collect::<Vec<String>>()
+                    .join(",");
+                let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
+                let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
+                let _ = ws_client.send(stream_name).await?;
+                clients.push(ws_client);
+        }
+        Ok(Receiver::new(clients))
     }
 
 
