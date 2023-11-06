@@ -23,6 +23,7 @@ mod params;
 mod unifier;
 
 
+#[derive(Debug, Clone)]
 pub enum StreamItem {
     OrderBook(OrderBookResult<OrderBook>),
     Unknown(Vec<u8>),
