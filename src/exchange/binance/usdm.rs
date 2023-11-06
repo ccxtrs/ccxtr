@@ -47,8 +47,9 @@ impl BinanceUsdm {
             }))
             .stream_parser(Some(|message, unifier| {
                 let common_message = WatchCommonResponse::try_from(message.to_vec())?;
-                if common_message.result.is_some() { // subscription response
-                    return Ok(None);
+                if common_message.id.is_some() { // subscription response
+                    let id = common_message.id.ok_or(Error::InvalidResponse("id is not found".into()))?;
+                    return Ok(Some(StreamItem::Subscribed(id)));
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
@@ -81,7 +82,10 @@ impl BinanceUsdm {
                         );
                         Ok(Some(StreamItem::OrderBook(Ok(book))))
                     }
-                    _ => return Ok(None),
+                    _ => {
+                        let message = String::from_utf8_lossy(&message);
+                        Ok(Some(StreamItem::Unknown(message.to_string())))
+                    },
                 }
             }))
             .channel_capacity(props.channel_capacity)
@@ -258,7 +262,7 @@ impl Exchange for BinanceUsdm {
         }
 
         let mut clients = vec![];
-        for symbol_ids in symbol_ids.chunks(100) {
+        for symbol_ids in symbol_ids.chunks(200) {
             let params = symbol_ids.iter()
                     .map(|s| format!("\"{}@depth5@100ms\"", s.to_lowercase()))
                     .collect::<Vec<String>>()
@@ -479,7 +483,7 @@ impl TryFrom<Vec<u8>> for WatchOrderBookResponse {
     fn try_from(message: Vec<u8>) -> Result<Self> {
         serde_json::from_slice(&message).map_err(|e| {
             let message = String::from_utf8_lossy(&message);
-            Error::DeserializeJsonBody(format!("{}: {}", e, message))
+            Error::DeserializeJsonBody(format!("Failed to deserialize json body. message={:?}, error={:?}", message, e))
         })
     }
 }
@@ -498,7 +502,7 @@ impl TryFrom<Vec<u8>> for WatchCommonResponse {
     fn try_from(message: Vec<u8>) -> Result<Self> {
         serde_json::from_slice(&message).map_err(|e| {
             let message = String::from_utf8_lossy(&message);
-            Error::DeserializeJsonBody(format!("{}: {}", e, message))
+            Error::DeserializeJsonBody(format!("Failed to deserialize json body. message={:?}, error={:?}", message, e))
         })
     }
 }

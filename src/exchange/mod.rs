@@ -26,7 +26,8 @@ mod unifier;
 #[derive(Debug, Clone)]
 pub enum StreamItem {
     OrderBook(OrderBookResult<OrderBook>),
-    Unknown(Vec<u8>),
+    Subscribed(i64),
+    Unknown(String),
 }
 
 pub struct ExchangeBase {
