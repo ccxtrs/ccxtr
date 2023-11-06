@@ -229,7 +229,7 @@ pub type WatchOrderBookResult<T> = WatchResult<T>;
 pub type WatchOrderBookError = WatchError;
 pub type WatchResult<T> = std::result::Result<T, WatchError>;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum WatchError {
     #[error("not implemented")]
