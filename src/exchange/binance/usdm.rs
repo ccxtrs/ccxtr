@@ -52,7 +52,7 @@ impl BinanceUsdm {
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
-                        let resp = WatchOrderBookResponse::from(message.to_vec());
+                        let resp = WatchOrderBookResponse::try_from(message.to_vec())?;
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
                             return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
@@ -262,7 +262,7 @@ impl Exchange for BinanceUsdm {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        
+
         let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
         let _ = ws_client.send(stream_name).await?;
         Ok(Receiver::new(ws_client))
@@ -470,9 +470,14 @@ struct WatchOrderBookResponse {
     previous_final_update_id: i64,
 }
 
-impl From<Vec<u8>> for WatchOrderBookResponse {
-    fn from(message: Vec<u8>) -> Self {
-        serde_json::from_slice(&message).unwrap()
+impl TryFrom<Vec<u8>> for WatchOrderBookResponse {
+    type Error = Error;
+
+    fn try_from(message: Vec<u8>) -> Result<Self> {
+        serde_json::from_slice(&message).map_err(|e| {
+            let message = String::from_utf8_lossy(&message);
+            Error::DeserializeJsonBody(format!("{}: {}", e, message))
+        })
     }
 }
 
@@ -488,7 +493,10 @@ impl TryFrom<Vec<u8>> for WatchCommonResponse {
     type Error = Error;
 
     fn try_from(message: Vec<u8>) -> Result<Self> {
-        serde_json::from_slice(&message).map_err(|e| Error::WebsocketError(e.to_string()))
+        serde_json::from_slice(&message).map_err(|e| {
+            let message = String::from_utf8_lossy(&message);
+            Error::DeserializeJsonBody(format!("{}: {}", e, message))
+        })
     }
 }
 
