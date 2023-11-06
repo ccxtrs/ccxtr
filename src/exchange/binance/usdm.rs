@@ -265,7 +265,7 @@ impl Exchange for BinanceUsdm {
         }
 
         let mut clients = vec![];
-        for symbol_ids in symbol_ids.chunks(200) {
+        for symbol_ids in symbol_ids.chunks(100) {
             let params = symbol_ids.iter()
                     .map(|s| format!("\"{}@depth5@100ms\"", s.to_lowercase()))
                     .collect::<Vec<String>>()
@@ -274,6 +274,7 @@ impl Exchange for BinanceUsdm {
                 let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
                 let _ = ws_client.send(stream_name).await?;
                 clients.push(ws_client);
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
         Ok(Receiver::new(clients))
     }
