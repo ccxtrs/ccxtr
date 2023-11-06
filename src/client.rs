@@ -1,7 +1,9 @@
 
 use std::io;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use futures_util::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -10,20 +12,19 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, tungstenite, WebSocketStr
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::error::{Error, Result};
+use crate::exchange::{StreamItem, Unifier};
+use crate::{WatchError, WatchResult};
 
 pub(crate) const EMPTY_QUERY: Option<&'static ()> = None;
 pub(crate) const EMPTY_BODY: Option<&String> = None;
 
 
-type ReceiveStream = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
-type MapFunc = fn(core::result::Result<Message, tungstenite::error::Error>) -> core::result::Result<Vec<u8>, Error>;
-type MappedReceiveStream = Map<ReceiveStream, MapFunc>;
-
 pub(crate) struct WsClient {
     endpoint: String,
+    parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>,
+    unifier: Unifier,
 
-    sender: Option<flume::Sender<String>>,
-    receiver: Option<flume::Receiver<String>>,
+    stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>>,
 }
 
 impl From<io::Error> for Error {
@@ -33,70 +34,94 @@ impl From<io::Error> for Error {
 }
 
 
+impl Stream for WsClient {
+    type Item = WatchResult<Option<StreamItem>>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.stream.as_mut().unwrap().poll_next_unpin(cx) {
+            Poll::Ready(Some(Ok(x))) => {
+                let resp = (self.parser)(x.into_data().as_slice(), &self.unifier);
+                Poll::Ready(Some(resp))
+            },
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(WatchError::WebsocketError(format!("{}", e))))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 impl WsClient {
-    pub fn new(endpoint: &str) -> Self {
+    pub fn new(endpoint: &str, parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>, unifier: Unifier) -> Self {
         Self {
             endpoint: endpoint.to_string(),
+            parser,
+            unifier,
+            stream: None,
         }
     }
 
-    pub(crate) async fn send(&self, msg: String) -> Result<()> {
-        let (mut stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
-        stream.send(Message::Text(msg)).await?;
-        stream.next()
-        Ok(())
-    }
-
-    pub(crate) async fn connect(&mut self) -> Result<&Self> {
-        let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
-        let (mut ws_tx, mut ws_rx) = stream.split();
-        let (tx, rx) = flume::unbounded::<String>();
-        tokio::spawn({
-            let rx = rx.clone();
-            async move {
-                loop {
-                    let req = rx.recv_async().await;
-                    match req {
-                        Ok(x) => {
-                            let _ = ws_tx.send(Message::Text(x)).await;
-                        }
-                        _ => {
-                            break;
-                        }
-                    }
-                }
+    pub(crate) async fn send(&mut self, msg: String) -> Result<impl Stream + '_> {
+        if self.stream.is_none() {
+            let (stream, response) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
+            if response.status() != tungstenite::http::StatusCode::SWITCHING_PROTOCOLS {
+                return Err(Error::WebsocketError(format!("Invalid status code: {}", response.status())));
             }
-        });
-
-        tokio::spawn({
-            let tx = tx.clone();
-            async move {
-                loop {
-                    let resp = ws_rx.next().await;
-                    match resp {
-                        Some(Ok(x)) => {
-                            let _ = tx.send_async(x.to_string()).await;
-                        }
-                        _ => {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-
-        self.sender = Some(tx);
-        self.receiver = Some(rx);
+            self.stream = Some(stream);
+        }
+        self.stream.as_mut().unwrap().send(Message::Text(msg)).await?;
         Ok(self)
     }
 
-    pub(crate) fn sender(&self) -> Option<flume::Sender<String>> {
-        self.sender.clone()
-    }
+    // pub(crate) async fn connect(&mut self) -> Result<&Self> {
+    //     let (stream, _) = connect_async(self.endpoint.as_str()).await.expect("Failed to connect");
+    //     let (mut ws_tx, mut ws_rx) = stream.split();
+    //     let (tx, rx) = flume::unbounded::<String>();
+    //     tokio::spawn({
+    //         let rx = rx.clone();
+    //         async move {
+    //             loop {
+    //                 let req = rx.recv_async().await;
+    //                 match req {
+    //                     Ok(x) => {
+    //                         let _ = ws_tx.send(Message::Text(x)).await;
+    //                     }
+    //                     _ => {
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+    //
+    //     tokio::spawn({
+    //         let tx = tx.clone();
+    //         async move {
+    //             loop {
+    //                 let resp = ws_rx.next().await;
+    //                 match resp {
+    //                     Some(Ok(x)) => {
+    //                         let _ = tx.send_async(x.to_string()).await;
+    //                     }
+    //                     _ => {
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+    //
+    //     self.sender = Some(tx);
+    //     self.receiver = Some(rx);
+    //     Ok(self)
+    // }
 
-    pub(crate) fn receiver(&mut self) -> Option<flume::Receiver<String>> {
-        self.receiver.clone()
-    }
+    // pub(crate) fn sender(&self) -> Option<flume::Sender<String>> {
+    //     self.sender.clone()
+    // }
+    //
+    // pub(crate) fn receiver(&mut self) -> Option<flume::Receiver<String>> {
+    //     self.receiver.clone()
+    // }
 }
 
 
@@ -204,24 +229,26 @@ impl HttpClientBuilder {
 
 #[cfg(test)]
 mod test {
-    use tokio_stream::StreamExt;
-
+    use futures_util::StreamExt;
     use crate::client::WsClient;
+    use crate::exchange::{StreamItem, Unifier};
 
     #[tokio::test]
     async fn test_ws_client() {
-        let mut client = WsClient::new("wss://stream.binance.com:9443/ws");
-        client.connect().await.unwrap();
-        let sender = client.sender();
-        let sender = sender.unwrap();
-        sender.send_async("test".to_string()).await.unwrap();
-        sender.send_async("test2".to_string()).await.unwrap();
+        let parser = |x: &[u8], _: &Unifier| {
+            Ok(Some(StreamItem::Unknown(x.to_vec())))
+        };
 
-        let mut receiver = client.receiver();
-        let receiver = receiver.as_mut().unwrap();
-        let msg = receiver.next().await.unwrap();
-        println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
-        let msg = receiver.next().await.unwrap();
-        println!("{:?}", String::from_utf8(msg.unwrap()).unwrap());
+        let unifier = crate::exchange::Unifier::new();
+        let mut client = WsClient::new("wss://stream.binance.com:9443/ws", parser, unifier);
+        client.send("test".to_string()).await.unwrap();
+
+        let resp = client.next().await.unwrap().unwrap().unwrap();
+        match resp {
+            StreamItem::Unknown(x) => {
+                println!("{:?}", x);
+            }
+            _ => {}
+        }
     }
 }

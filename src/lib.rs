@@ -23,6 +23,7 @@ pub use crate::error::{OrderBookError, OrderBookResult};
 pub use crate::error::{CreateOrderError, CreateOrderResult};
 pub use crate::util::channel::Receiver;
 
+pub use exchange::StreamItem;
 mod exchange;
 mod client;
 mod error;

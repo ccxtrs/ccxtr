@@ -41,59 +41,59 @@ impl Binance {
                 }
             }))
             .stream_parser(Some(|message, unifier| {
-                let common_message = WatchCommonResponse::try_from(message.to_vec()).ok()?;
+                let common_message = WatchCommonResponse::try_from(message.to_vec())?;
                 if common_message.result.is_some() { // subscription result
-                    return None;
+                    return Ok(None);
                 }
 
                 // best bid and ask stream
                 if let (Some(order_book_update_id), Some(symbol), Some(bid_price), Some(bid_quantity), Some(ask_price), Some(ask_quantity)) = (common_message.order_book_update_id, common_message.symbol, common_message.bid_price, common_message.bid_quantity, common_message.ask_price, common_message.ask_quantity) {
                     let market = unifier.get_market(&symbol);
                     if market.is_none() {
-                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Unknown market. symbol={}", symbol), None,
-                        ))));
+                        )))));
                     }
                     let market = market.unwrap();
                     let bid_price = bid_price.parse::<f64>();
                     if bid_price.is_err() {
-                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid bid price. symbol={}, price={}", symbol, bid_price.unwrap_err()), None,
-                        ))));
+                        )))));
                     }
                     let bid_price = bid_price.unwrap();
                     let bid_amount = bid_quantity.parse::<f64>();
                     if bid_amount.is_err() {
-                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid bid amount. symbol={}, amount={}", symbol, bid_amount.unwrap_err()), None,
-                        ))));
+                        )))));
                     }
                     let bid_amount = bid_amount.unwrap();
                     let ask_price = ask_price.parse::<f64>();
                     if ask_price.is_err() {
-                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid ask price. symbol={}, price={}", symbol, ask_price.unwrap_err()), None,
-                        ))));
+                        )))));
                     }
                     let ask_price = ask_price.unwrap();
                     let ask_amount = ask_quantity.parse::<f64>();
                     if ask_amount.is_err() {
-                        return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid ask amount. symbol={}, amount={}", symbol, ask_amount.unwrap_err()), None,
-                        ))));
+                        )))));
                     }
                     let ask_amount = ask_amount.unwrap();
                     let book = OrderBook::new(vec![(bid_price, bid_amount).into()], vec![(ask_price, ask_amount).into()], market, None, Some(order_book_update_id));
-                    return Some(StreamItem::OrderBook(Ok(book)));
+                    return Ok(Some(StreamItem::OrderBook(Ok(book))));
                 }
 
 
                 return match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         // diff order book
-                        Some(StreamItem::OrderBook(Err(OrderBookError::NotImplemented)))
+                        Ok(Some(StreamItem::OrderBook(Err(OrderBookError::NotImplemented))))
                     }
-                    _ => None,
+                    _ => Ok(None),
                 };
             }))
             .channel_capacity(props.channel_capacity)
@@ -212,7 +212,7 @@ impl Exchange for Binance {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, markets: &WatchOrderBookParams) -> WatchResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, markets: &WatchOrderBookParams) -> WatchResult<Receiver> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
@@ -220,13 +220,8 @@ impl Exchange for Binance {
         let markets = &markets.markets;
 
         if markets.len() == 0 {
-            return Err(Error::MissingMarkets.into())?;
+            return Err(Error::MissingMarkets.into());
         }
-
-        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str());
-
-        let tx = ws_client.sender()
-            .ok_or(Error::WebsocketError("no sender".into()))?;
 
 
         let mut symbol_ids: Vec<String> = Vec::new();
@@ -242,13 +237,10 @@ impl Exchange for Binance {
             .join(",");
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-        tx.send_async(stream_name).await?;
 
-        let rx = ws_client.receiver()
-            .ok_or(Error::WebsocketError("no receiver".into()))?;
-
-        let ch = async_broadcast::broadcast(1000);
-        Ok(rx)
+        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
+        let _ = ws_client.send(stream_name).await?;
+        Ok(Receiver::new(ws_client))
     }
 
 

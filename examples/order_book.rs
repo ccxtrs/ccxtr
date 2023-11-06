@@ -1,53 +1,23 @@
 use std::sync::Arc;
-use ccxtr::{BinanceUsdm, Exchange, PropertiesBuilder, WatchOrderBookParamsBuilder};
+use ccxtr::{Binance, BinanceUsdm, Exchange, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder, WatchResult};
 
 #[tokio::main]
 async fn main() {
     let props = PropertiesBuilder::default().channel_capacity(Some(5)).build().expect("failed to build properties");
-    let mut ex = Arc::new(BinanceUsdm::new(&props).unwrap());
+    let mut ex = Arc::new(Binance::new(&props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let markets = markets.into_iter().filter(|m| m.quote == "USDT" && m.base == "BTC").collect::<Vec<_>>();
     let params = WatchOrderBookParamsBuilder::default().markets(markets.clone()).build().expect("failed to build params");
     let mut stream = ex.watch_order_book(&params).await.expect("failed to watch order book");
 
 
-    tokio::spawn({
-        let mut stream = stream.clone();
-        async move {
-            loop {
-                match stream.receive().await {
-                    Ok(Ok(order_book)) => {
-                        println!("[1] timestamp={:?} len={:?}", order_book.timestamp, stream.len());
-                    }
-                    Ok(Err(e)) => {
-                        println!("[1] order book error={:?}", e);
-                    }
-                    Err(e) => {
-                        println!("[1] watch error={:?}", e);
-                    }
-                }
+    loop {
+        match stream.receive().await {
+            Ok(Some(StreamItem::OrderBook(order_book))) => {
+                println!("ob: {:?}", order_book);
             }
+            _ => {}
         }
-    });
+    }
 
-
-    tokio::spawn({
-        async move {
-            loop {
-                match stream.receive().await {
-                    Ok(Ok(order_book)) => {
-                        println!("[2] timestamp={:?} len={:?}", order_book.timestamp, stream.len());
-                    }
-                    Ok(Err(e)) => {
-                        println!("[2] order book error={:?}", e);
-                    }
-                    Err(e) => {
-                        println!("[2] watch error={:?}", e);
-                    }
-                }
-            }
-        }
-    });
-
-    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 }

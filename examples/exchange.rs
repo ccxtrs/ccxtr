@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic};
 
-use ccxtr::{Binance, OrderBookError, PropertiesBuilder};
+use ccxtr::{Binance, OrderBookError, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{Market, MarketType};
 
@@ -29,36 +29,20 @@ async fn main() {
     let subscriptions = Arc::new(subscriptions[0..10].to_vec());
     println!("subscriptions: {:?}", subscriptions.len());
     let select = Arc::new(atomic::AtomicI64::new(0));
-    let stream = ex.watch_order_book(&subscriptions).await;
+    let params = WatchOrderBookParamsBuilder::default().markets(subscriptions.to_vec()).build().expect("failed to build params");
+    let stream = ex.watch_order_book(&params).await;
     if stream.is_err() {
         println!("failed to watch order book: {:?}", stream.err().unwrap());
         return;
     }
     let mut stream = stream.unwrap();
     tokio::spawn({
-        let select = select.clone();
-        let selections = subscriptions.clone();
         async move {
             println!("start watching order book");
             while let Ok(result) = stream.receive().await {
                 match result {
-                    Ok(order_book) => {
-                        if order_book.market == selections[select.load(atomic::Ordering::Relaxed) as usize] {
-                            println!("[{}] bid={:?}({:?}) ask={:?}({:?})",
-                                     order_book.market,
-                                     order_book.bids[0].price,
-                                     order_book.bids[0].amount,
-                                     order_book.asks[0].price,
-                                     order_book.asks[0].amount,
-                            );
-                        }
-                    }
-                    Err(OrderBookError::SynchronizationError(m)) => {
-                        println!("synchronization error: {:?}", m);
-                        ex.watch_order_book(&vec![m]).await.unwrap();
-                    }
-                    Err(OrderBookError::InvalidOrderBook(_, m)) => {
-                        panic!("invalid order book: {:?}", m);
+                    Some(StreamItem::OrderBook(Ok(order_book))) => {
+                        println!("ob: {:?}", order_book);
                     }
                     _ => {}
                 }

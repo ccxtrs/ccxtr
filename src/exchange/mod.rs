@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio_stream::StreamExt;
 
 pub use binance::Binance;
 pub use binance::BinanceUsdm;
@@ -12,10 +11,10 @@ pub use property::{Properties, PropertiesBuilder, PropertiesBuilderError};
 pub(crate) use property::{BaseProperties, BasePropertiesBuilder, BasePropertiesBuilderError};
 
 use crate::client::{HttpClient, HttpClientBuilder, WsClient};
-use crate::exchange::unifier::Unifier;
+pub(crate) use crate::exchange::unifier::Unifier;
 use crate::error::*;
 use crate::model::*;
-use crate::util::channel::{Receiver, Sender};
+use crate::util::channel::Receiver;
 
 mod binance;
 mod property;
@@ -26,13 +25,14 @@ mod unifier;
 
 pub enum StreamItem {
     OrderBook(OrderBookResult<OrderBook>),
+    Unknown(Vec<u8>),
 }
 
 pub struct ExchangeBase {
     pub(super) http_client: HttpClient,
     pub(super) ws_endpoint: Option<String>,
 
-    stream_parser: fn(&[u8], &Unifier) -> Option<StreamItem>,
+    stream_parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>,
 
     pub(super) markets: Vec<Market>,
 
@@ -61,43 +61,9 @@ impl ExchangeBase {
             unifier: Unifier::new(),
             ws_endpoint: properties.ws_endpoint.clone(),
             http_client,
-            stream_parser: properties.stream_parser.unwrap_or(|_, _| None),
+            stream_parser: properties.stream_parser.unwrap_or(|_, _| Ok(None)),
         })
     }
-
-    // pub(crate) async fn connect(&mut self) -> Result<()> {
-    //     if self.markets.is_empty() {
-    //         return Err(Error::MissingMarkets);
-    //     }
-    //     self.ws_client.connect().await?;
-    //     let mut ws_rx = self.ws_client.receiver().ok_or(Error::WebsocketError("receiver is None".into()))?;
-    //     let stream_parser = self.stream_parser;
-    //     let order_book_stream_tx = self.order_book_stream_tx.clone();
-    //
-    //     let unifier = self.unifier.clone();
-    //     tokio::spawn(async move {
-    //         loop {
-    //             let message = ws_rx.next().await;
-    //             match message {
-    //                 Some(message) => {
-    //                     match stream_parser(message.unwrap().as_slice(), &unifier) {
-    //                         None => {
-    //                             continue;
-    //                         }
-    //                         Some(StreamItem::OrderBook(order_book)) => {
-    //                             let _ = order_book_stream_tx.send(order_book).await;
-    //                         }
-    //                     }
-    //                 }
-    //                 None => {
-    //                     break;
-    //                 }
-    //             };
-    //         }
-    //     });
-    //     self.is_connected = true;
-    //     Ok(())
-    // }
 }
 
 
@@ -142,7 +108,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&self, _: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, _: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
         Err(WatchError::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> WatchResult<()> {

@@ -46,31 +46,31 @@ impl BinanceUsdm {
                 }
             }))
             .stream_parser(Some(|message, unifier| {
-                let common_message = WatchCommonResponse::try_from(message.to_vec()).ok()?;
+                let common_message = WatchCommonResponse::try_from(message.to_vec())?;
                 if common_message.result.is_some() { // subscription response
-                    return None;
+                    return Ok(None);
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         let resp = WatchOrderBookResponse::from(message.to_vec());
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Unknown market {}", resp.symbol), None,
-                            ))));
+                            )))));
                         }
                         let market = market.unwrap();
                         let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid bid {:?}", resp.bids), Some(market),
-                            ))));
+                            )))));
                         }
                         let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
-                            return Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid ask {:?}", resp.asks), Some(market),
-                            ))));
+                            )))));
                         }
                         let book = OrderBook::new(
                             bids.unwrap(),
@@ -79,9 +79,9 @@ impl BinanceUsdm {
                             Some(resp.event_time),
                             None,
                         );
-                        Some(StreamItem::OrderBook(Ok(book)))
+                        Ok(Some(StreamItem::OrderBook(Ok(book))))
                     }
-                    _ => return None,
+                    _ => return Ok(None),
                 }
             }))
             .channel_capacity(props.channel_capacity)
@@ -234,7 +234,7 @@ impl Exchange for BinanceUsdm {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver<OrderBookResult<OrderBook>>> {
+    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
@@ -263,9 +263,9 @@ impl Exchange for BinanceUsdm {
 
         let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
         
-        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str());
-        ws_client.send(stream_name).await?;
-        Ok(ws_client.receiver())
+        let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
+        let _ = ws_client.send(stream_name).await?;
+        Ok(Receiver::new(ws_client))
     }
 
     async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {

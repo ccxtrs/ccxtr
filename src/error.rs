@@ -240,8 +240,6 @@ pub enum WatchError {
     SymbolNotFound(String),
     #[error("not connected")]
     NotConnected,
-    #[error("receiving skipped {0} messages")]
-    Overflowed(u64),
     #[error("unknown error {0}")]
     UnknownError(String),
 }
@@ -259,7 +257,7 @@ impl From<Error> for WatchError {
 impl From<async_broadcast::RecvError> for WatchError {
     fn from(e: async_broadcast::RecvError) -> Self {
         match e {
-            async_broadcast::RecvError::Overflowed(n) => WatchError::Overflowed(n),
+            async_broadcast::RecvError::Overflowed(n) => WatchError::UnknownError(n.to_string()),
             async_broadcast::RecvError::Closed => WatchError::NotConnected,
         }
     }
