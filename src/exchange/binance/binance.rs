@@ -227,7 +227,7 @@ impl Exchange for Binance {
                     vwap: item.weighted_avg_price.parse::<f64>()?,
                 });
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         Ok(tickers)

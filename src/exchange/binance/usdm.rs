@@ -249,6 +249,7 @@ impl Exchange for BinanceUsdm {
                     ..Default::default()
                 });
             }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         Ok(tickers)
     }
