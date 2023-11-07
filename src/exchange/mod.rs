@@ -88,7 +88,7 @@ pub trait Exchange {
     async fn fetch_ticker(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn fetch_tickers(&self, _: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
+    async fn fetch_tickers(&self, _: FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
         Err(FetchTickersError::NotImplemented)
     }
     async fn fetch_order_book(&self) -> CommonResult<Vec<OrderBook>> {

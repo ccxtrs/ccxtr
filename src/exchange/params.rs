@@ -23,6 +23,7 @@ pub struct FetchBalanceParams {
 #[non_exhaustive]
 pub struct FetchTickersParams {
     pub markets: Option<Vec<Market>>,
+    pub chunk_size: Option<usize>,
 }
 
 

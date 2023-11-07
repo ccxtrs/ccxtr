@@ -193,50 +193,62 @@ impl Exchange for BinanceUsdm {
         }
         Ok(markets)
     }
-    async fn fetch_tickers(&self, params: &FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
+    async fn fetch_tickers(&self, params: FetchTickersParams) -> FetchTickersResult<Vec<Ticker>> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
 
-        let query = params.markets.as_ref().map(|markets| {
-            let s = markets.iter()
-                .map(|m| self.exchange_base.unifier.get_symbol_id(&m))
-                .filter(|s| s.is_some())
-                .map(|s| format!("\"{}\"", s.unwrap()))
-                .collect::<Vec<String>>()
-                .join(",");
-            vec![("symbols", format!("[{}]", s))]
-        });
+        let chunk_size = params.chunk_size.unwrap_or(20);
 
-        let result: Vec<FetchTickersResponse> = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, query.as_ref()).await?;
-        let mut tickers = vec![];
-        for item in result {
-            let market = self.exchange_base.unifier.get_market(&item.symbol);
-            if market.is_none() {
-                continue;
+        let queries: Vec<Option<Vec<(&str, String)>>> = match params.markets {
+            Some(markets) => {
+                markets.chunks(chunk_size)
+                    .map(|markets| {
+                        let s = markets.iter()
+                            .map(|m| self.exchange_base.unifier.get_symbol_id(&m))
+                            .filter(|s| s.is_some())
+                            .map(|s| format!("\"{}\"", s.unwrap()))
+                            .collect::<Vec<String>>()
+                            .join(",");
+                        Some(vec![("symbols", format!("[{}]", s))])
+                    })
+                    .collect()
             }
-            let market = market.unwrap();
-            let timestamp = item.close_time;
+            None => vec![None]
+        };
 
-            let last = item.last_price.parse::<f64>()?;
-            let open = item.open_price.parse::<f64>()?;
-            tickers.push(Ticker {
-                base_volume: item.volume.parse::<f64>()?,
-                change: item.price_change.parse::<f64>()?,
-                close: last,
-                high: item.high_price.parse::<f64>()?,
-                last,
-                low: item.low_price.parse::<f64>()?,
-                open: open,
-                percentage: item.price_change_percent.parse::<f64>()?,
-                previous_close: None,
-                quote_volume: item.quote_volume.parse::<f64>()?,
-                average: (open + last) / 2f64,
-                market,
-                timestamp,
-                vwap: item.weighted_avg_price.parse::<f64>()?,
-                ..Default::default()
-            });
+
+        let mut tickers = vec![];
+        for query in queries {
+            let result: Vec<FetchTickersResponse> = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, query.as_ref()).await?;
+            for item in result {
+                let market = self.exchange_base.unifier.get_market(&item.symbol);
+                if market.is_none() {
+                    continue;
+                }
+                let market = market.unwrap();
+                let timestamp = item.close_time;
+
+                let last = item.last_price.parse::<f64>()?;
+                let open = item.open_price.parse::<f64>()?;
+                tickers.push(Ticker {
+                    base_volume: item.volume.parse::<f64>()?,
+                    change: item.price_change.parse::<f64>()?,
+                    close: last,
+                    high: item.high_price.parse::<f64>()?,
+                    last,
+                    low: item.low_price.parse::<f64>()?,
+                    open: open,
+                    percentage: item.price_change_percent.parse::<f64>()?,
+                    previous_close: None,
+                    quote_volume: item.quote_volume.parse::<f64>()?,
+                    average: (open + last) / 2f64,
+                    market,
+                    timestamp,
+                    vwap: item.weighted_avg_price.parse::<f64>()?,
+                    ..Default::default()
+                });
+            }
         }
         Ok(tickers)
     }
@@ -999,7 +1011,7 @@ mod test {
         let markets = exchange.load_markets().await.unwrap();
         let target_market = markets.into_iter().find(|m| m.base == "BTC" && m.quote == "USDT" && m.market_type == MarketType::Swap).unwrap();
         let params = FetchTickersParamsBuilder::default().markets(Some(vec![target_market])).build().unwrap();
-        let tickers = exchange.fetch_tickers(&params).await;
+        let tickers = exchange.fetch_tickers(params).await;
         tickers.unwrap().iter().for_each(|ticker| {
             println!("{:?}", ticker);
         });
