@@ -4,12 +4,12 @@ use ccxtr::{Binance, BinanceUsdm, Exchange, PropertiesBuilder, StreamItem, Watch
 #[tokio::main]
 async fn main() {
     let props = PropertiesBuilder::default().channel_capacity(Some(5)).build().expect("failed to build properties");
-    let mut ex = Arc::new(BinanceUsdm::new(&props).unwrap());
+    let mut ex = Arc::new(BinanceUsdm::new(props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let markets = markets.into_iter().filter(|m| m.quote == "USDT").collect::<Vec<_>>();
     println!("len: {}", markets.len());
     let params = WatchOrderBookParamsBuilder::default().markets(markets.clone()).build().expect("failed to build params");
-    let mut stream = ex.watch_order_book(&params).await.expect("failed to watch order book");
+    let mut stream = ex.watch_order_book(params).await.expect("failed to watch order book");
 
 
     loop {

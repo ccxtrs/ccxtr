@@ -110,7 +110,7 @@ pub trait Exchange {
     async fn watch_tickers(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn watch_order_book(&self, _: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
+    async fn watch_order_book(&self, _: WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
         Err(WatchError::NotImplemented)
     }
     async fn watch_ohlcv(&self) -> WatchResult<()> {
@@ -124,15 +124,15 @@ pub trait Exchange {
     }
 
     // private
-    async fn fetch_balance(&self, _: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
+    async fn fetch_balance(&self, _: FetchBalanceParams) -> FetchBalanceResult<Balance> {
         Err(FetchBalanceError::NotImplemented)
     }
 
-    async fn fetch_positions(&self, _: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
+    async fn fetch_positions(&self, _: FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
         Err(FetchPositionsError::NotImplemented)
     }
 
-    async fn create_order(&self, _: &CreateOrderParams) -> CreateOrderResult<Order> {
+    async fn create_order(&self, _: CreateOrderParams) -> CreateOrderResult<Order> {
         Err(CreateOrderError::NotImplemented)
     }
     async fn cancel_order(&self, _: Order) -> CommonResult<Order> {

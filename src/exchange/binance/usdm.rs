@@ -254,7 +254,7 @@ impl Exchange for BinanceUsdm {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, params: &WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
+    async fn watch_order_book(&self, params: WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
@@ -292,7 +292,7 @@ impl Exchange for BinanceUsdm {
         Ok(Receiver::new(clients))
     }
 
-    async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {
+    async fn create_order(&self, params: CreateOrderParams) -> CreateOrderResult<Order> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials.into());
         }
@@ -326,7 +326,7 @@ impl Exchange for BinanceUsdm {
         Ok(order)
     }
 
-    async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
+    async fn fetch_balance(&self, params: FetchBalanceParams) -> FetchBalanceResult<Balance> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
@@ -362,7 +362,7 @@ impl Exchange for BinanceUsdm {
         Ok(bal)
     }
 
-    async fn fetch_positions(&self, _params: &FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
+    async fn fetch_positions(&self, _params: FetchPositionsParams) -> FetchPositionsResult<Vec<Position>> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
@@ -981,7 +981,7 @@ mod test {
         let mut exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         exchange.load_markets().await.expect("failed to load markets");
         let params = FetchPositionsParamsBuilder::default().build().expect("failed to create params");
-        let result = exchange.fetch_positions(&params).await;
+        let result = exchange.fetch_positions(params).await;
         for p in result.unwrap() {
             if p.notional != 0.0 {
                 println!("{:?}", p);
@@ -998,7 +998,7 @@ mod test {
         let mut exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         exchange.load_markets().await.expect("failed to load markets");
         let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().expect("failed to create params");
-        let result = exchange.fetch_balance(&params).await;
+        let result = exchange.fetch_balance(params).await;
         for item in result.unwrap().items {
             if item.currency == "USDT" {
                 println!("{:?}", item);

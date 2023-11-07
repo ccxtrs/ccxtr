@@ -233,12 +233,12 @@ impl Exchange for Binance {
         Ok(tickers)
     }
 
-    async fn watch_order_book(&self, markets: &WatchOrderBookParams) -> WatchResult<Receiver> {
+    async fn watch_order_book(&self, params: WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
         if self.exchange_base.markets.is_empty() {
             return Err(Error::MarketNotInitialized.into());
         }
 
-        let markets = &markets.markets;
+        let markets = &params.markets;
 
         if markets.len() == 0 {
             return Err(Error::MissingMarkets.into());
@@ -269,7 +269,7 @@ impl Exchange for Binance {
     }
 
 
-    async fn fetch_balance(&self, params: &FetchBalanceParams) -> FetchBalanceResult<Balance> {
+    async fn fetch_balance(&self, params: FetchBalanceParams) -> FetchBalanceResult<Balance> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials)?;
         }
@@ -339,7 +339,7 @@ impl Exchange for Binance {
         }
     }
 
-    async fn create_order(&self, params: &CreateOrderParams) -> CreateOrderResult<Order> {
+    async fn create_order(&self, params: CreateOrderParams) -> CreateOrderResult<Order> {
         if self.api_key.is_none() || self.secret.is_none() {
             return Err(Error::InvalidCredentials)?;
         }
@@ -882,7 +882,7 @@ mod test {
         let markets = exchange.load_markets().await.expect("failed to load markets");
         assert!(markets.len() > 0);
         let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().unwrap();
-        let balance = exchange.fetch_balance(&params).await;
+        let balance = exchange.fetch_balance(params).await;
         let balance = balance.expect("failed to fetch balance");
         balance.items.iter().for_each(|item| {
             if item.currency != "USDT" && item.currency != "BTC" {
