@@ -236,7 +236,8 @@ mod test {
     #[tokio::test]
     async fn test_ws_client() {
         let parser = |x: &[u8], _: &Unifier| {
-            Ok(Some(StreamItem::Unknown(x.to_vec())))
+            let cow = String::from_utf8_lossy(x);
+            Ok(Some(StreamItem::Unknown(cow.to_string())))
         };
 
         let unifier = crate::exchange::Unifier::new();

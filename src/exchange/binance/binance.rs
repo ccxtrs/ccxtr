@@ -19,11 +19,11 @@ pub struct Binance {
 }
 
 impl Binance {
-    pub fn new(props: &Properties) -> CommonResult<Self> {
+    pub fn new(props: Properties) -> CommonResult<Self> {
         let base_props = BasePropertiesBuilder::default()
-            .host(props.host.clone().or(Some("https://api.binance.com".to_string())))
+            .host(props.host.or(Some("https://api.binance.com".to_string())))
             .port(props.port.or(Some(443)))
-            .ws_endpoint(Some("wss://stream.binance.com:9443/ws".to_string()))
+            .ws_endpoint(props.ws_endpoint.or(Some("wss://stream.binance.com:9443/ws".to_string())))
             .error_parser(Some(|message| {
                 match serde_json::from_str::<ErrorResponse>(&message) {
                     Ok(error) => {
@@ -711,10 +711,6 @@ impl Into<Result<Market>> for &FetchMarketsSymbolResponse {
 
         let active = util::is_active(self.status.clone());
 
-        if !self.permissions.contains(&("MARGIN".to_string())) {
-            return Err(Error::InvalidMarket);
-        }
-
         let mut limit = MarketLimit {
             amount: None,
             price: None,
@@ -863,8 +859,15 @@ mod test {
         let api_key = std::env::var("BINANCE_API_KEY").expect("BINANCE_API_KEY is not set");
         let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
 
-        let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
-        let exchange = Binance::new(&props).expect("failed to create exchange");
+        let props = PropertiesBuilder::default()
+            .api_key(Some(api_key))
+            .secret(Some(secret))
+            .host(Some("https://testnet.binance.vision".to_string()))
+            .ws_endpoint(Some("wss://testnet.binance.vision/ws".to_string()))
+            .build().expect("failed to create properties");
+        let mut exchange = Binance::new(props).expect("failed to create exchange");
+        let markets = exchange.load_markets().await.expect("failed to load markets");
+        assert!(markets.len() > 0);
         let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().unwrap();
         let balance = exchange.fetch_balance(&params).await;
         let balance = balance.expect("failed to fetch balance");
@@ -878,7 +881,7 @@ mod test {
 
     #[tokio::test]
     async fn test_fetch_tickers() {
-        let mut exchange = Binance::new(&PropertiesBuilder::default().build().unwrap()).unwrap();
+        let mut exchange = Binance::new(PropertiesBuilder::default().build().unwrap()).unwrap();
         let markets = exchange.load_markets().await.unwrap();
         let target_market = markets.into_iter().find(|m| m.base == "BTC" && m.quote == "USDT").unwrap();
         let params = FetchTickersParamsBuilder::default().markets(Some(vec![target_market])).build().unwrap();

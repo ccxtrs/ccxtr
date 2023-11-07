@@ -24,11 +24,11 @@ pub struct BinanceUsdm {
 
 
 impl BinanceUsdm {
-    pub fn new(props: &Properties) -> CommonResult<Self> {
+    pub fn new(props: Properties) -> CommonResult<Self> {
         let base_props = BasePropertiesBuilder::default()
-            .host(props.host.clone().or(Some("https://fapi.binance.com".to_string())))
+            .host(props.host.or(Some("https://fapi.binance.com".to_string())))
             .port(props.port.or(Some(443)))
-            .ws_endpoint(Some("wss://fstream.binance.com/ws".to_string()))
+            .ws_endpoint(props.ws_endpoint.or(Some("wss://fstream.binance.com/ws".to_string())))
             .error_parser(Some(|message| {
                 match serde_json::from_str::<ErrorResponse>(&message) {
                     Ok(error) => {
@@ -933,7 +933,7 @@ mod test {
         let secret = "2b5eb11e18796d12d88f13dc27dbbd02c2cc51ff7059765ed9821957d82bb4d9";
 
         let props = PropertiesBuilder::default().api_key(Some(api_key.to_string())).secret(Some(secret.to_string())).build().expect("failed to create properties");
-        let exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         let mut params = vec![];
         params.push(("symbol", "BTCUSDT"));
         params.push(("side", "BUY"));
@@ -953,7 +953,7 @@ mod test {
         let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
 
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
-        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let mut exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         let result = exchange.load_leverage_brackets().await;
         println!("{:?}", result);
         assert!(!result.is_err());
@@ -965,7 +965,7 @@ mod test {
         let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
 
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
-        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let mut exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         exchange.load_markets().await.expect("failed to load markets");
         let params = FetchPositionsParamsBuilder::default().build().expect("failed to create params");
         let result = exchange.fetch_positions(&params).await;
@@ -982,7 +982,7 @@ mod test {
         let secret = std::env::var("BINANCE_SECRET").expect("BINANCE_SECRET is not set");
 
         let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to create properties");
-        let mut exchange = BinanceUsdm::new(&props).expect("failed to create exchange");
+        let mut exchange = BinanceUsdm::new(props).expect("failed to create exchange");
         exchange.load_markets().await.expect("failed to load markets");
         let params = FetchBalanceParamsBuilder::default().margin_mode(Some(MarginMode::Cross)).build().expect("failed to create params");
         let result = exchange.fetch_balance(&params).await;
@@ -995,7 +995,7 @@ mod test {
 
     #[tokio::test]
     async fn test_fetch_tickers() {
-        let mut exchange = BinanceUsdm::new(&PropertiesBuilder::default().build().unwrap()).unwrap();
+        let mut exchange = BinanceUsdm::new(PropertiesBuilder::default().build().unwrap()).unwrap();
         let markets = exchange.load_markets().await.unwrap();
         let target_market = markets.into_iter().find(|m| m.base == "BTC" && m.quote == "USDT" && m.market_type == MarketType::Swap).unwrap();
         let params = FetchTickersParamsBuilder::default().markets(Some(vec![target_market])).build().unwrap();
