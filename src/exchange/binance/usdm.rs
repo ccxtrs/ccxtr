@@ -52,7 +52,7 @@ impl BinanceUsdm {
                 }
                 if common_message.id.is_some() { // subscription response
                     let id = common_message.id.ok_or(Error::InvalidResponse("id is not found".into()))?;
-                    return Ok(StreamItem::Subscribed(id))
+                    return Ok(StreamItem::Subscribed(id));
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
@@ -61,20 +61,20 @@ impl BinanceUsdm {
                         if market.is_none() {
                             return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Unknown market {}", resp.symbol), None,
-                            ))))
+                            ))));
                         }
                         let market = market.unwrap();
                         let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
                             return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid bid {:?}", resp.bids), Some(market),
-                            ))))
+                            ))));
                         }
                         let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
                             return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid ask {:?}", resp.asks), Some(market),
-                            ))))
+                            ))));
                         }
                         let book = OrderBook::new(
                             bids.unwrap(),
@@ -88,7 +88,7 @@ impl BinanceUsdm {
                     _ => {
                         let message = String::from_utf8_lossy(&message);
                         Ok(StreamItem::Unknown(message.to_string()))
-                    },
+                    }
                 }
             }))
             .channel_capacity(props.channel_capacity)
@@ -198,58 +198,49 @@ impl Exchange for BinanceUsdm {
             return Err(Error::MarketNotInitialized.into());
         }
 
-        let chunk_size = params.chunk_size.unwrap_or(20);
 
-        let queries: Vec<Option<Vec<(&str, String)>>> = match params.markets {
-            Some(markets) => {
-                markets.chunks(chunk_size)
-                    .map(|markets| {
-                        let s = markets.iter()
-                            .map(|m| self.exchange_base.unifier.get_symbol_id(&m))
-                            .filter(|s| s.is_some())
-                            .map(|s| format!("\"{}\"", s.unwrap()))
-                            .collect::<Vec<String>>()
-                            .join(",");
-                        Some(vec![("symbols", format!("[{}]", s))])
-                    })
-                    .collect()
+        let mut result: Vec<FetchTickersResponse>;
+        if let Some(markets) = params.markets.as_ref() {
+            result = vec![];
+            for market in markets.into_iter() {
+                let symbol_id = self.exchange_base.unifier.get_symbol_id(&market).expect("market is not found");
+                let query = Some(vec![("symbol", format!("{}", symbol_id))]);
+                let item: FetchTickersResponse = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, query.as_ref()).await?;
+                result.push(item);
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
-            None => vec![None]
-        };
-
+        } else {
+            result = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, EMPTY_QUERY).await?;
+        }
 
         let mut tickers = vec![];
-        for query in queries {
-            let result: Vec<FetchTickersResponse> = self.exchange_base.http_client.get("/fapi/v1/ticker/24hr", None, query.as_ref()).await?;
-            for item in result {
-                let market = self.exchange_base.unifier.get_market(&item.symbol);
-                if market.is_none() {
-                    continue;
-                }
-                let market = market.unwrap();
-                let timestamp = item.close_time;
-
-                let last = item.last_price.parse::<f64>()?;
-                let open = item.open_price.parse::<f64>()?;
-                tickers.push(Ticker {
-                    base_volume: item.volume.parse::<f64>()?,
-                    change: item.price_change.parse::<f64>()?,
-                    close: last,
-                    high: item.high_price.parse::<f64>()?,
-                    last,
-                    low: item.low_price.parse::<f64>()?,
-                    open: open,
-                    percentage: item.price_change_percent.parse::<f64>()?,
-                    previous_close: None,
-                    quote_volume: item.quote_volume.parse::<f64>()?,
-                    average: (open + last) / 2f64,
-                    market,
-                    timestamp,
-                    vwap: item.weighted_avg_price.parse::<f64>()?,
-                    ..Default::default()
-                });
+        for item in result {
+            let market = self.exchange_base.unifier.get_market(&item.symbol);
+            if market.is_none() {
+                continue;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let market = market.unwrap();
+            let timestamp = item.close_time;
+
+            let last = item.last_price.parse::<f64>()?;
+            let open = item.open_price.parse::<f64>()?;
+            tickers.push(Ticker {
+                base_volume: item.volume.parse::<f64>()?,
+                change: item.price_change.parse::<f64>()?,
+                close: last,
+                high: item.high_price.parse::<f64>()?,
+                last,
+                low: item.low_price.parse::<f64>()?,
+                open: open,
+                percentage: item.price_change_percent.parse::<f64>()?,
+                previous_close: None,
+                quote_volume: item.quote_volume.parse::<f64>()?,
+                average: (open + last) / 2f64,
+                market,
+                timestamp,
+                vwap: item.weighted_avg_price.parse::<f64>()?,
+                ..Default::default()
+            });
         }
         Ok(tickers)
     }
@@ -280,13 +271,13 @@ impl Exchange for BinanceUsdm {
         let mut clients = vec![];
         for symbol_ids in symbol_ids.chunks(100) {
             let params = symbol_ids.iter()
-                    .map(|s| format!("\"{}@depth5@100ms\"", s.to_lowercase()))
-                    .collect::<Vec<String>>()
-                    .join(",");
-                let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
-                let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
-                let _ = ws_client.send(stream_name).await?;
-                clients.push(ws_client);
+                .map(|s| format!("\"{}@depth5@100ms\"", s.to_lowercase()))
+                .collect::<Vec<String>>()
+                .join(",");
+            let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
+            let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
+            let _ = ws_client.send(stream_name).await?;
+            clients.push(ws_client);
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
         Ok(Receiver::new(clients))
