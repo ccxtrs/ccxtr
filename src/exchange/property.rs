@@ -22,7 +22,7 @@ pub(crate) struct BaseProperties {
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,
     pub(crate) ws_endpoint: Option<String>,
-    pub(crate) stream_parser: Option<fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>>,
+    pub(crate) stream_parser: Option<fn(&[u8], &Unifier) -> WatchResult<StreamItem>>,
     pub(crate) error_parser: Option<fn(String) -> Error>,
     pub(crate) channel_capacity: Option<usize>,
 }

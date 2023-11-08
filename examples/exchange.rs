@@ -9,7 +9,7 @@ async fn main() {
     let api_key = std::env::var("API_KEY").unwrap();
     let secret = std::env::var("SECRET").unwrap();
     let props = PropertiesBuilder::default().api_key(Some(api_key)).secret(Some(secret)).build().expect("failed to build properties");
-    let mut ex = Arc::new(Binance::new(&props).unwrap());
+    let mut ex = Arc::new(Binance::new(props).unwrap());
     let markets = Arc::get_mut(&mut ex).unwrap().load_markets().await.unwrap();
     let mut subscriptions = Vec::new();
     let mut order_market = None;
@@ -30,7 +30,7 @@ async fn main() {
     println!("subscriptions: {:?}", subscriptions.len());
     let select = Arc::new(atomic::AtomicI64::new(0));
     let params = WatchOrderBookParamsBuilder::default().markets(subscriptions.to_vec()).build().expect("failed to build params");
-    let stream = ex.watch_order_book(&params).await;
+    let stream = ex.watch_order_book(params).await;
     if stream.is_err() {
         println!("failed to watch order book: {:?}", stream.err().unwrap());
         return;
@@ -41,7 +41,7 @@ async fn main() {
             println!("start watching order book");
             while let Ok(result) = stream.receive().await {
                 match result {
-                    Some(StreamItem::OrderBook(Ok(order_book))) => {
+                    StreamItem::OrderBook(Ok(order_book)) => {
                         println!("ob: {:?}", order_book);
                     }
                     _ => {}

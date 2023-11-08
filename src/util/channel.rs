@@ -3,7 +3,7 @@ use futures_util::StreamExt;
 
 use crate::client::WsClient;
 use crate::exchange::StreamItem;
-use crate::WatchResult;
+use crate::{WatchError, WatchResult};
 
 pub struct Receiver {
     clients: SelectAll<WsClient>,
@@ -17,10 +17,10 @@ impl Receiver {
             clients
         }
     }
-    pub async fn receive(&mut self) -> WatchResult<Option<StreamItem>> {
+    pub async fn receive(&mut self) -> WatchResult<StreamItem> {
         let option = self.clients.next().await;
         if option.is_none() {
-            return Ok(None);
+            return Err(WatchError::Disconnected);
         }
         option.unwrap()
     }

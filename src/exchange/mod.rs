@@ -34,7 +34,7 @@ pub struct ExchangeBase {
     pub(super) http_client: HttpClient,
     pub(super) ws_endpoint: Option<String>,
 
-    stream_parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>,
+    stream_parser: fn(&[u8], &Unifier) -> WatchResult<StreamItem>,
 
     pub(super) markets: Vec<Market>,
 
@@ -63,7 +63,7 @@ impl ExchangeBase {
             unifier: Unifier::new(),
             ws_endpoint: properties.ws_endpoint.clone(),
             http_client,
-            stream_parser: properties.stream_parser.unwrap_or(|_, _| Ok(None)),
+            stream_parser: properties.stream_parser.unwrap_or(|_, _| Ok(StreamItem::Unknown("stream_parser is not set".into()))),
         })
     }
 }

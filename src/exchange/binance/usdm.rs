@@ -52,29 +52,29 @@ impl BinanceUsdm {
                 }
                 if common_message.id.is_some() { // subscription response
                     let id = common_message.id.ok_or(Error::InvalidResponse("id is not found".into()))?;
-                    return Ok(Some(StreamItem::Subscribed(id)));
+                    return Ok(StreamItem::Subscribed(id))
                 }
                 match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         let resp = WatchOrderBookResponse::try_from(message.to_vec())?;
                         let market = unifier.get_market(&resp.symbol);
                         if market.is_none() {
-                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Unknown market {}", resp.symbol), None,
-                            )))));
+                            ))))
                         }
                         let market = market.unwrap();
                         let bids = resp.bids.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if bids.is_err() {
-                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid bid {:?}", resp.bids), Some(market),
-                            )))));
+                            ))))
                         }
                         let asks = resp.asks.iter().map(|b| b.try_into()).collect::<OrderBookResult<Vec<OrderBookUnit>>>();
                         if asks.is_err() {
-                            return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                            return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                                 format!("Invalid ask {:?}", resp.asks), Some(market),
-                            )))));
+                            ))))
                         }
                         let book = OrderBook::new(
                             bids.unwrap(),
@@ -83,11 +83,11 @@ impl BinanceUsdm {
                             Some(resp.event_time),
                             None,
                         );
-                        Ok(Some(StreamItem::OrderBook(Ok(book))))
+                        Ok(StreamItem::OrderBook(Ok(book)))
                     }
                     _ => {
                         let message = String::from_utf8_lossy(&message);
-                        Ok(Some(StreamItem::Unknown(message.to_string())))
+                        Ok(StreamItem::Unknown(message.to_string()))
                     },
                 }
             }))

@@ -1,19 +1,17 @@
-
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_util::{SinkExt, Stream, StreamExt};
-use futures_util::stream::{Map, SplitStream};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, tungstenite, WebSocketStream};
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::{WatchError, WatchResult};
 use crate::error::{Error, Result};
 use crate::exchange::{StreamItem, Unifier};
-use crate::{WatchError, WatchResult};
 
 pub(crate) const EMPTY_QUERY: Option<&'static ()> = None;
 pub(crate) const EMPTY_BODY: Option<&String> = None;
@@ -21,7 +19,7 @@ pub(crate) const EMPTY_BODY: Option<&String> = None;
 
 pub(crate) struct WsClient {
     endpoint: String,
-    parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>,
+    parser: fn(&[u8], &Unifier) -> WatchResult<StreamItem>,
     unifier: Unifier,
 
     stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>>,
@@ -35,14 +33,14 @@ impl From<io::Error> for Error {
 
 
 impl Stream for WsClient {
-    type Item = WatchResult<Option<StreamItem>>;
+    type Item = WatchResult<StreamItem>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.stream.as_mut().unwrap().poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(x))) => {
                 let resp = (self.parser)(x.into_data().as_slice(), &self.unifier);
                 Poll::Ready(Some(resp))
-            },
+            }
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(WatchError::WebsocketError(format!("{}", e))))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
@@ -51,7 +49,7 @@ impl Stream for WsClient {
 }
 
 impl WsClient {
-    pub fn new(endpoint: &str, parser: fn(&[u8], &Unifier) -> WatchResult<Option<StreamItem>>, unifier: Unifier) -> Self {
+    pub fn new(endpoint: &str, parser: fn(&[u8], &Unifier) -> WatchResult<StreamItem>, unifier: Unifier) -> Self {
         Self {
             endpoint: endpoint.to_string(),
             parser,
@@ -230,6 +228,7 @@ impl HttpClientBuilder {
 #[cfg(test)]
 mod test {
     use futures_util::StreamExt;
+
     use crate::client::WsClient;
     use crate::exchange::{StreamItem, Unifier};
 
@@ -237,14 +236,14 @@ mod test {
     async fn test_ws_client() {
         let parser = |x: &[u8], _: &Unifier| {
             let cow = String::from_utf8_lossy(x);
-            Ok(Some(StreamItem::Unknown(cow.to_string())))
+            Ok(StreamItem::Unknown(cow.to_string()))
         };
 
         let unifier = crate::exchange::Unifier::new();
         let mut client = WsClient::new("wss://stream.binance.com:9443/ws", parser, unifier);
         client.send("test".to_string()).await.unwrap();
 
-        let resp = client.next().await.unwrap().unwrap().unwrap();
+        let resp = client.next().await.unwrap().unwrap();
         match resp {
             StreamItem::Unknown(x) => {
                 println!("{:?}", x);

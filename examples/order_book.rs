@@ -14,7 +14,7 @@ async fn main() {
 
     loop {
         match stream.receive().await {
-            Ok(Some(StreamItem::OrderBook(Ok(order_book)))) => {
+            Ok(StreamItem::OrderBook(Ok(order_book))) => {
                 if order_book.market.base == "ICP" {
                     println!("bid: {:?}, ask: {:?}", order_book.bids.first().unwrap(), order_book.asks.first().unwrap());
                 }

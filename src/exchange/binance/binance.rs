@@ -48,59 +48,59 @@ impl Binance {
 
                 if common_message.id.is_some() { // subscription result
                     let id = common_message.id.ok_or(Error::InvalidResponse("id is not found".into()))?;
-                    return Ok(Some(StreamItem::Subscribed(id)));
+                    return Ok(StreamItem::Subscribed(id))
                 }
 
                 // best bid and ask stream
                 if let (Some(order_book_update_id), Some(symbol), Some(bid_price), Some(bid_quantity), Some(ask_price), Some(ask_quantity)) = (common_message.order_book_update_id, common_message.symbol, common_message.bid_price, common_message.bid_quantity, common_message.ask_price, common_message.ask_quantity) {
                     let market = unifier.get_market(&symbol);
                     if market.is_none() {
-                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Unknown market. symbol={}", symbol), None,
-                        )))));
+                        ))))
                     }
                     let market = market.unwrap();
                     let bid_price = bid_price.parse::<f64>();
                     if bid_price.is_err() {
-                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid bid price. symbol={}, price={}", symbol, bid_price.unwrap_err()), None,
-                        )))));
+                        ))))
                     }
                     let bid_price = bid_price.unwrap();
                     let bid_amount = bid_quantity.parse::<f64>();
                     if bid_amount.is_err() {
-                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid bid amount. symbol={}, amount={}", symbol, bid_amount.unwrap_err()), None,
-                        )))));
+                        ))))
                     }
                     let bid_amount = bid_amount.unwrap();
                     let ask_price = ask_price.parse::<f64>();
                     if ask_price.is_err() {
-                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid ask price. symbol={}, price={}", symbol, ask_price.unwrap_err()), None,
-                        )))));
+                        ))))
                     }
                     let ask_price = ask_price.unwrap();
                     let ask_amount = ask_quantity.parse::<f64>();
                     if ask_amount.is_err() {
-                        return Ok(Some(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                        return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
                             format!("Invalid ask amount. symbol={}, amount={}", symbol, ask_amount.unwrap_err()), None,
-                        )))));
+                        ))))
                     }
                     let ask_amount = ask_amount.unwrap();
                     let book = OrderBook::new(vec![(bid_price, bid_amount).into()], vec![(ask_price, ask_amount).into()], market, None, Some(order_book_update_id));
-                    return Ok(Some(StreamItem::OrderBook(Ok(book))));
+                    return Ok(StreamItem::OrderBook(Ok(book)))
                 }
 
 
                 return match common_message.event_type {
                     Some(event_type) if event_type == "depthUpdate" => {
                         // diff order book
-                        Ok(Some(StreamItem::OrderBook(Err(OrderBookError::NotImplemented))))
+                        Ok(StreamItem::OrderBook(Err(OrderBookError::NotImplemented)))
                     }
                     _ => {
                         let message = String::from_utf8_lossy(&message);
-                        Ok(Some(StreamItem::Unknown(message.to_string())))
+                        Ok(StreamItem::Unknown(message.to_string()))
                     },
                 };
             }))

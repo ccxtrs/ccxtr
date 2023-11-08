@@ -241,6 +241,8 @@ pub enum WatchError {
     SymbolNotFound(String),
     #[error("not connected")]
     NotConnected,
+    #[error("disconnected")]
+    Disconnected,
     #[error("error response {0}")]
     ErrorResponse(String),
     #[error("invalid response {0}")]
@@ -258,6 +260,7 @@ impl From<Error> for WatchError {
     fn from(err: Error) -> Self {
         match err {
             Error::DeserializeJsonBody(e) => WatchError::InvalidResponse(e),
+            Error::InvalidResponse(e) => WatchError::InvalidResponse(e),
             _ => WatchError::UnknownError(format!("{:?}", err)),
         }
     }
