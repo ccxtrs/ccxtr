@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic};
 
-use ccxtr::{Binance, OrderBookError, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder};
+use ccxtr::{Binance, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder};
 use ccxtr::Exchange;
 use ccxtr::model::{Market, MarketType};
 

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use ccxtr::{Binance, BinanceUsdm, Exchange, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder, WatchResult};
+use ccxtr::{BinanceUsdm, Exchange, PropertiesBuilder, StreamItem, WatchOrderBookParamsBuilder};
 
 #[tokio::main]
 async fn main() {
