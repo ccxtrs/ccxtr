@@ -506,6 +506,15 @@ pub enum OrderSide {
     Sell,
 }
 
+impl Display for OrderSide {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            OrderSide::Buy => write!(f, "BUY"),
+            OrderSide::Sell => write!(f, "SELL"),
+        }
+    }
+}
+
 impl OrderSide {
     pub fn opposite(&self) -> Self {
         match self {
