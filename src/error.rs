@@ -1,4 +1,4 @@
-use std::num::ParseFloatError;
+use std::num::{ParseFloatError, ParseIntError};
 use std::sync::PoisonError;
 
 use hmac::digest::InvalidLength;
@@ -53,6 +53,12 @@ impl From<reqwest::Error> for Error {
 
 impl From<ParseFloatError> for Error {
     fn from(e: ParseFloatError) -> Self {
+        Error::ParseError(format!("{}", e))
+    }
+}
+
+impl From<ParseIntError> for Error {
+    fn from(e: ParseIntError) -> Self {
         Error::ParseError(format!("{}", e))
     }
 }

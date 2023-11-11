@@ -744,6 +744,8 @@ impl Into<Result<Market>> for &FetchMarketsSymbolResponse {
                         let min = filter.min_price.as_ref().ok_or_else(|| Error::MissingField("min_price".into()))?.parse::<f64>()?;
                         let max = filter.max_price.as_ref().ok_or_else(|| Error::MissingField("max_price".into()))?.parse::<f64>()?;
                         limit.price = Some(Range { min, max });
+                        let tick_size = filter.tick_size.as_ref().ok_or_else(|| Error::MissingField("tick_size".into()))?;
+                        precision.price = Some(into_precision(tick_size.clone())?);
                     }
                     "LOT_SIZE" => {
                         let min = filter.min_qty.as_ref().ok_or_else(|| Error::MissingField("min_qty".into()))?.parse::<f64>()?;

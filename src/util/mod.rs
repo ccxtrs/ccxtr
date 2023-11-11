@@ -9,6 +9,12 @@ mod collections;
 pub(crate) mod channel;
 
 pub(crate) fn into_precision(s: String) -> Result<isize> {
+    if s.contains('e') {
+        let mut split = s.split('e');
+        let mut e = isize::from_str(split.skip(1).next().unwrap())?;
+        return Ok(e.neg());
+    }
+
     let d = f64::from_str(&s)?;
 
     if d > 1_f64 {
@@ -40,6 +46,7 @@ mod test {
         assert_eq!(super::into_precision("0.00000001".to_string()).unwrap(), 8);
         assert_eq!(super::into_precision("0.001".to_string()).unwrap(), 3);
         assert_eq!(super::into_precision("10".to_string()).unwrap(), -1);
+        assert_eq!(super::into_precision("1e-7".to_string()).unwrap(), 7);
     }
 }
 
