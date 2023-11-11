@@ -17,6 +17,10 @@ pub(crate) fn into_precision(s: String) -> Result<isize> {
 
     let d = f64::from_str(&s)?;
 
+    if d == 1_f64 {
+        return Ok(0);
+    }
+
     if d > 1_f64 {
         return Ok(d.log10().neg() as isize);
     }
@@ -46,6 +50,7 @@ mod test {
         assert_eq!(super::into_precision("0.00000001".to_string()).unwrap(), 8);
         assert_eq!(super::into_precision("0.001".to_string()).unwrap(), 3);
         assert_eq!(super::into_precision("10".to_string()).unwrap(), -1);
+        assert_eq!(super::into_precision("1".to_string()).unwrap(), 0);
         assert_eq!(super::into_precision("1e-7".to_string()).unwrap(), 7);
     }
 }
