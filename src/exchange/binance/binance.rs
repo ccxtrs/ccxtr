@@ -386,7 +386,7 @@ impl Exchange for Binance {
         }
 
         let price = params.price.map(|p| p.to_string());
-        if params.price.is_some() {
+        if order_type != OrderType::Market && params.price.is_some() {
             queries.push(("price", price.as_ref().unwrap().as_str()));
         }
 
