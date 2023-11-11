@@ -297,16 +297,19 @@ impl Exchange for BinanceUsdm {
         }
         let symbol_id = self.exchange_base.unifier.get_symbol_id(&params.market).ok_or(Error::SymbolNotFound(format!("{}", params.market)))?;
         let timestamp = Utc::now().timestamp_millis();
-        let mut body = format!("symbol={}&side={}&type={}&quantity={}&timeInForce={}&recvWindow=5000&timestamp={}",
+        let mut body = format!("symbol={}&side={}&type={}&quantity={}&recvWindow=5000&timestamp={}",
                                symbol_id,
                                util::get_exchange_order_side(&params.order_side),
                                util::get_exchange_order_type(&order_type)?,
                                params.amount,
-                               util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC)),
                                timestamp);
-        if params.price.is_some() {
+        if order_type != OrderType::Market && params.price.is_some() {
             body = format!("{}&price={}", body, params.price.unwrap());
         }
+        if order_type != OrderType::Market {
+            body = format!("{}&timeInForce={}", body, util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC)))
+        }
+
         let signature = self.auth(&body)?;
         let body = format!("{}&signature={}", body, signature);
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];
