@@ -28,7 +28,7 @@ impl Binance {
                 match serde_json::from_str::<ErrorResponse>(&message) {
                     Ok(error) => {
                         match error.code {
-                            -2019 => Error::InsufficientMargin(error.msg), // Margin is insufficient
+                            -3045 => Error::InsufficientMargin(error.msg), // The system doesn't have enough asset now.
                             -1013 => Error::InvalidAmount(error.msg), // Invalid amount
                             -1021 => Error::HttpError(error.msg), // Timestamp for this request is outside of the recvWindow
                             -1022 => Error::InvalidSignature(error.msg), // Signature for this request is not valid
@@ -376,11 +376,14 @@ impl Exchange for Binance {
             ("side", util::get_exchange_order_side(&params.order_side)),
             ("type", util::get_exchange_order_type(&order_type)?),
             ("quantity", amount.as_str()),
-            ("timeInForce", util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC))),
             ("recvWindow", "5000"),
             ("timestamp", timestamp.as_str()),
             ("sideEffectType", side_effect_type),
         ];
+
+        if order_type != OrderType::Market {
+            queries.push(("timeInForce", util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC))));
+        }
 
         let price = params.price.map(|p| p.to_string());
         if params.price.is_some() {
