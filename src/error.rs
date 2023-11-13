@@ -34,6 +34,7 @@ pub(crate) enum Error {
     UnsupportedOrderSide(String),
     UnsupportedOrderStatus(String),
     UnsupportedTimeInForce(String),
+    UnsupportedWorkingType(String),
     CredentialsError(String),
 
     InvalidOrderBook(String),

@@ -603,6 +603,9 @@ pub enum OrderType {
     /// position at a specific limit price or at market price (a position with a take profit order
     /// attached to it).
     TakeProfit,
+
+
+    TrailingStopMarket,
 }
 
 impl Display for OrderType {
@@ -614,6 +617,7 @@ impl Display for OrderType {
             OrderType::Trigger => write!(f, "TRIGGER"),
             OrderType::StopLoss => write!(f, "STOP LOSS"),
             OrderType::TakeProfit => write!(f, "TAKE PROFIT"),
+            OrderType::TrailingStopMarket => write!(f, "TRAILING STOP MARKET"),
         }
     }
 }
@@ -621,6 +625,23 @@ impl Display for OrderType {
 impl Default for OrderType {
     fn default() -> Self {
         OrderType::Limit
+    }
+}
+
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum WorkingType {
+    ContractPrice,
+    MarkPrice,
+}
+
+impl Display for WorkingType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            WorkingType::ContractPrice => write!(f, "CONTRACT_PRICE"),
+            WorkingType::MarkPrice => write!(f, "MARK_PRICE"),
+        }
     }
 }
 

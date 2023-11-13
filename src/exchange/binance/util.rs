@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::model::{OrderSide, OrderStatus, OrderType, TimeInForce};
+use crate::model::{OrderSide, OrderStatus, OrderType, TimeInForce, WorkingType};
 
 pub(in super) fn to_unified_asset(exchange_asset: &str) -> String {
     exchange_asset.to_uppercase()
@@ -34,19 +34,22 @@ pub(in super) fn get_exchange_time_in_force(time_in_force: &TimeInForce) -> &'st
 }
 
 
+pub(in super) fn get_exchange_working_type(working_type: &WorkingType) -> Result<&'static str> {
+    match working_type {
+        WorkingType::MarkPrice => Ok("MARK_PRICE"),
+        WorkingType::ContractPrice => Ok("CONTRACT_PRICE"),
+        _ => Err(Error::UnsupportedWorkingType(working_type.to_string())),
 
-
-const LIMIT: &str = "LIMIT";
-const MARKET: &str = "MARKET";
-const STOP_LOSS: &str = "STOP_LOSS";
-const TAKE_PROFIT: &str = "TAKE_PROFIT";
+    }
+}
 
 pub(in super) fn get_exchange_order_type(order_type: &OrderType) -> Result<&'static str> {
     match order_type {
-        OrderType::Limit => Ok(LIMIT),
-        OrderType::Market => Ok(MARKET),
-        OrderType::StopLoss => Ok(STOP_LOSS),
-        OrderType::TakeProfit => Ok(TAKE_PROFIT),
+        OrderType::Limit => Ok("LIMIT"),
+        OrderType::Market => Ok("MARKET"),
+        OrderType::StopLoss => Ok("STOP_LOSS"),
+        OrderType::TakeProfit => Ok("TAKE_PROFIT"),
+        OrderType::TrailingStopMarket => Ok("TRAILING_STOP_MARKET"),
         _ => Err(Error::UnsupportedOrderType(order_type.to_string())),
     }
 }

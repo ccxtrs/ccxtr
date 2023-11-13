@@ -310,6 +310,18 @@ impl Exchange for BinanceUsdm {
             body = format!("{}&timeInForce={}", body, util::get_exchange_time_in_force(&params.time_in_force.unwrap_or(TimeInForce::GTC)))
         }
 
+        let working_type = params.working_type.unwrap_or(WorkingType::ContractPrice);
+
+        match (order_type, params.callback_rate) {
+            (OrderType::TrailingStopMarket, Some(callback_rate)) => {
+                body = format!("{}&callbackRate={}&workingType={}", body, callback_rate, util::get_exchange_working_type(&working_type)?);
+            }
+            (OrderType::TrailingStopMarket, None) => {
+                return Err(Error::InvalidParameters("callback rate is required for trailing stop market orders".into()).into());
+            }
+            _ => {}
+        }
+
         let signature = self.auth(&body)?;
         let body = format!("{}&signature={}", body, signature);
         let headers = vec![("X-MBX-APIKEY", self.api_key.as_ref().unwrap().as_str())];

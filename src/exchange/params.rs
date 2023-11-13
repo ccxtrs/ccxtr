@@ -1,6 +1,6 @@
 use derive_builder::Builder;
 
-use crate::model::{MarginMode, Market, OrderSide, OrderType, TimeInForce};
+use crate::model::{MarginMode, Market, OrderSide, OrderType, TimeInForce, WorkingType};
 
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
@@ -44,6 +44,8 @@ pub struct CreateOrderParams {
     pub order_type: Option<OrderType>,
     pub margin_mode: Option<MarginMode>,
     pub time_in_force: Option<TimeInForce>,
+    pub callback_rate: Option<f64>,
+    pub working_type: Option<WorkingType>,
     pub reduce_only: bool,
 }
 
@@ -56,6 +58,8 @@ impl Default for CreateOrderParams {
             order_side: OrderSide::Buy,
             order_type: None,
             margin_mode: None,
+            callback_rate: None,
+            working_type: None,
             time_in_force: None,
             reduce_only: false,
         }
