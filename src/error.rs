@@ -198,6 +198,16 @@ impl From<Error> for ConnectError {
 }
 
 
+pub type TradeResult<T> = std::result::Result<T, TradeError>;
+
+
+#[derive(Error, Debug, Clone)]
+#[non_exhaustive]
+pub enum TradeError {
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
 pub type OrderBookResult<T> = std::result::Result<T, OrderBookError>;
 
 #[derive(Error, Debug, Clone)]
@@ -235,6 +245,10 @@ impl From<ParseFloatError> for OrderBookError {
 
 pub type WatchOrderBookResult<T> = WatchResult<T>;
 pub type WatchOrderBookError = WatchError;
+
+
+pub type WatchTradesResult<T> = WatchResult<T>;
+pub type WatchTradesError = WatchError;
 pub type WatchResult<T> = std::result::Result<T, WatchError>;
 
 #[derive(Error, Debug, Clone)]
@@ -254,8 +268,10 @@ pub enum WatchError {
     ErrorResponse(String),
     #[error("invalid response {0}")]
     InvalidResponse(String),
-    #[error("parse error {0}")]
+    #[error("deserialize json body error {0}")]
     DeserializeJsonBody(String),
+    #[error("parse error {0}")]
+    ParseError(String),
     #[error("stream error {0}")]
     StreamError(String),
     #[error("unknown error {0}")]

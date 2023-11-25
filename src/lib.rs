@@ -3,6 +3,7 @@ pub use exchange::BinanceUsdm;
 pub use exchange::Exchange;
 
 pub use exchange::{WatchOrderBookParams, WatchOrderBookParamsBuilder, WatchOrderBookParamsBuilderError};
+pub use exchange::{WatchTradesParams, WatchTradesParamsBuilder, WatchTradesParamsBuilderError};
 pub use exchange::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use exchange::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
 pub use exchange::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
@@ -11,6 +12,7 @@ pub use exchange::{Properties, PropertiesBuilder, PropertiesBuilderError};
 
 pub use crate::error::{ConnectError, ConnectResult};
 pub use crate::error::{WatchOrderBookError, WatchOrderBookResult};
+pub use crate::error::{WatchTradesError, WatchTradesResult};
 pub use crate::error::{FetchMarketError, FetchMarketResult};
 pub use crate::error::{FetchPositionsError, FetchPositionsResult};
 pub use crate::error::{FetchBalanceError, FetchBalanceResult};

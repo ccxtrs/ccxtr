@@ -452,9 +452,6 @@ pub struct Trade {
     /// Unix timestamp in milliseconds
     pub timestamp: i64,
 
-    /// ISO8601 datetime with milliseconds
-    pub datetime: String,
-
     /// market
     pub market: Market,
 
@@ -468,7 +465,7 @@ pub struct Trade {
     pub side: Option<OrderSide>,
 
     /// taker or maker
-    pub is_maker: bool,
+    pub is_maker: Option<bool>,
 
     /// float price in quote currency
     pub price: f64,
@@ -484,6 +481,26 @@ pub struct Trade {
 
     /// an array of fees if paid in multiple currencies
     pub fees: Option<Vec<OrderFee>>,
+}
+
+impl Trade {
+    pub fn new(id: String, timestamp: i64, market: Market, order_id: Option<String>, order_type: Option<OrderType>, side: Option<OrderSide>, is_maker: Option<bool>, price: f64, amount: f64, cost: f64, fee: Option<OrderFee>, fees: Option<Vec<OrderFee>>) -> Self {
+        Self {
+            id,
+            timestamp,
+            market,
+            order_id,
+            order_type,
+            side,
+            is_maker,
+            price,
+            amount,
+            cost,
+            fee,
+            fees,
+        }
+    }
+
 }
 
 

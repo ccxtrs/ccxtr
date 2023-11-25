@@ -55,6 +55,34 @@ impl BinanceUsdm {
                     return Ok(StreamItem::Subscribed(id));
                 }
                 match common_message.event_type {
+                    Some(event_type) if event_type == "aggTrade" => {
+                        let resp = WatchTradesResponse::try_from(message.to_vec())?;
+                        let market = unifier.get_market(&resp.symbol);
+                        if market.is_none() {
+                            return Ok(StreamItem::OrderBook(Err(OrderBookError::InvalidOrderBook(
+                                format!("Unknown market {}", resp.symbol), None,
+                            ))));
+                        }
+                        let order_side = match resp.is_buyer_market_maker {
+                            true => OrderSide::Sell,
+                            false => OrderSide::Buy,
+                        };
+                        let price = resp.price.parse::<f64>().map_err(|_| WatchError::ParseError(resp.price.clone()))?;
+                        let amount = resp.quantity.parse::<f64>().map_err(|_| WatchError::ParseError(resp.quantity.clone()))?;
+                        let trade = Trade::new(
+                            resp.aggregate_trade_id.to_string(),
+                            resp.trade_time,
+                            market.unwrap(),
+                            None,
+                            None,
+                            Some(order_side),
+                            Some(resp.is_buyer_market_maker),
+                            price, amount,
+                            price * amount,
+                            None, None,
+                        );
+                        Ok(StreamItem::Trade(Ok(trade)))
+                    }
                     Some(event_type) if event_type == "depthUpdate" => {
                         let resp = WatchOrderBookResponse::try_from(message.to_vec())?;
                         let market = unifier.get_market(&resp.symbol);
@@ -243,6 +271,48 @@ impl Exchange for BinanceUsdm {
             });
         }
         Ok(tickers)
+    }
+
+    async fn watch_trades(&self, params: WatchTradesParams) -> WatchTradesResult<Receiver> {
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
+        }
+
+        if self.exchange_base.ws_endpoint.is_none() {
+            return Err(Error::InvalidParameters("ws endpoint is empty".into()).into());
+        }
+
+        let markets = &params.markets;
+        if markets.len() == 0 {
+            return Err(Error::InvalidParameters("markets is empty".into()).into());
+        }
+
+        if self.exchange_base.ws_endpoint.is_none() {
+            return Err(Error::InvalidParameters("ws endpoint is empty".into()).into());
+        }
+
+
+        let mut symbol_ids: Vec<String> = Vec::new();
+        for m in markets {
+            match self.exchange_base.unifier.get_symbol_id(&m) {
+                Some(symbol_id) => symbol_ids.push(symbol_id),
+                None => return Err(WatchError::SymbolNotFound(format!("{:?}", m))),
+            }
+        }
+
+        let mut clients = vec![];
+        for symbol_ids in symbol_ids.chunks(100) {
+            let params = symbol_ids.iter()
+                .map(|s| format!("\"{}@aggTrade\"", s.to_lowercase()))
+                .collect::<Vec<String>>()
+                .join(",");
+            let stream_name = format!("{{\"method\": \"SUBSCRIBE\", \"params\": [{params}], \"id\": 1}}");
+            let mut ws_client = WsClient::new(self.exchange_base.ws_endpoint.as_ref().unwrap().as_str(), self.exchange_base.stream_parser, self.exchange_base.unifier.clone());
+            let _ = ws_client.send(stream_name).await?;
+            clients.push(ws_client);
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        }
+        Ok(Receiver::new(clients))
     }
 
     async fn watch_order_book(&self, params: WatchOrderBookParams) -> WatchOrderBookResult<Receiver> {
@@ -477,6 +547,42 @@ struct LeverageBracket {
     maintenance_margin_ratio: f64,
 }
 
+
+#[derive(Serialize, Deserialize)]
+struct WatchTradesResponse {
+    #[serde(rename = "e")]
+    pub event_type: String,
+    #[serde(rename = "E")]
+    pub event_time: i64,
+    #[serde(rename = "s")]
+    pub symbol: String,
+    #[serde(rename = "a")]
+    pub aggregate_trade_id: i64,
+    #[serde(rename = "p")]
+    pub price: String,
+    #[serde(rename = "q")]
+    pub quantity: String,
+    #[serde(rename = "f")]
+    pub first_trade_id: i64,
+    #[serde(rename = "l")]
+    pub last_trade_id: i64,
+    #[serde(rename = "T")]
+    pub trade_time: i64,
+    #[serde(rename = "m")]
+    pub is_buyer_market_maker: bool,
+}
+
+
+impl TryFrom<Vec<u8>> for WatchTradesResponse {
+    type Error = Error;
+
+    fn try_from(message: Vec<u8>) -> Result<Self> {
+        serde_json::from_slice(&message).map_err(|e| {
+            let message = String::from_utf8_lossy(&message);
+            Error::DeserializeJsonBody(format!("Failed to deserialize json body. message={:?}, error={:?}", message, e))
+        })
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 struct WatchOrderBookResponse {

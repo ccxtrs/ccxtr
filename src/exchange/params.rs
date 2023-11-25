@@ -13,6 +13,15 @@ pub struct WatchOrderBookParams {
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
 #[non_exhaustive]
+pub struct WatchTradesParams {
+    /// markets to fetch trades for
+    pub markets: Vec<Market>,
+}
+
+
+#[derive(Default, Builder, Debug)]
+#[builder(default)]
+#[non_exhaustive]
 pub struct FetchBalanceParams {
     pub margin_mode: Option<MarginMode>,
 }

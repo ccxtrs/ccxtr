@@ -3,6 +3,7 @@ use async_trait::async_trait;
 pub use binance::Binance;
 pub use binance::BinanceUsdm;
 pub use params::{WatchOrderBookParams, WatchOrderBookParamsBuilder, WatchOrderBookParamsBuilderError};
+pub use params::{WatchTradesParams, WatchTradesParamsBuilder, WatchTradesParamsBuilderError};
 pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use params::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
 pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
@@ -26,6 +27,7 @@ mod unifier;
 #[derive(Debug, Clone)]
 pub enum StreamItem {
     OrderBook(OrderBookResult<OrderBook>),
+    Trade(TradeResult<Trade>),
     Subscribed(i64),
     Unknown(String),
 }
@@ -119,7 +121,7 @@ pub trait Exchange {
     async fn watch_status(&self) -> WatchResult<()> {
         Err(WatchError::NotImplemented)
     }
-    async fn watch_trades(&self) -> WatchResult<()> {
+    async fn watch_trades(&self, _: WatchTradesParams) -> WatchTradesResult<Receiver> {
         Err(WatchError::NotImplemented)
     }
 
