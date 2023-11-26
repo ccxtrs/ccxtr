@@ -6,6 +6,7 @@ pub use params::{WatchOrderBookParams, WatchOrderBookParamsBuilder, WatchOrderBo
 pub use params::{WatchTradesParams, WatchTradesParamsBuilder, WatchTradesParamsBuilderError};
 pub use params::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use params::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
+pub use params::{FetchTradesParams, FetchTradesParamsBuilder, FetchTradesParamsBuilderError};
 pub use params::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
 pub use params::{FetchPositionsParams, FetchPositionsParamsBuilder, FetchPositionsParamsBuilderError};
 pub use property::{Properties, PropertiesBuilder, PropertiesBuilderError};
@@ -102,8 +103,8 @@ pub trait Exchange {
     async fn fetch_status(&self) -> CommonResult<()> {
         Err(CommonError::NotImplemented)
     }
-    async fn fetch_trades(&self) -> CommonResult<Vec<Trade>> {
-        Err(CommonError::NotImplemented)
+    async fn fetch_trades(&self, _: FetchTradesParams) -> FetchTradesResult<Vec<Trade>> {
+        Err(FetchTradesError::NotImplemented)
     }
 
     async fn watch_ticker(&self) -> CommonResult<()> {

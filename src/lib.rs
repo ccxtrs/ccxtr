@@ -6,6 +6,7 @@ pub use exchange::{WatchOrderBookParams, WatchOrderBookParamsBuilder, WatchOrder
 pub use exchange::{WatchTradesParams, WatchTradesParamsBuilder, WatchTradesParamsBuilderError};
 pub use exchange::{FetchBalanceParams, FetchBalanceParamsBuilder, FetchBalanceParamsBuilderError};
 pub use exchange::{FetchTickersParams, FetchTickersParamsBuilder, FetchTickersParamsBuilderError};
+pub use exchange::{FetchTradesParams, FetchTradesParamsBuilder, FetchTradesParamsBuilderError};
 pub use exchange::{CreateOrderParams, CreateOrderParamsBuilder, CreateOrderParamsBuilderError};
 pub use exchange::{FetchPositionsParams, FetchPositionsParamsBuilder, FetchPositionsParamsBuilderError};
 pub use exchange::{Properties, PropertiesBuilder, PropertiesBuilderError};

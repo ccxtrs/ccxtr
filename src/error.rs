@@ -442,6 +442,34 @@ impl From<Error> for FetchPositionsError {
     }
 }
 
+pub type FetchTradesResult<T> = std::result::Result<T, FetchTradesError>;
+
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum FetchTradesError {
+    #[error("not implemented")]
+    NotImplemented,
+    #[error("parse error {0}")]
+    ParseError(String),
+    #[error("unknown error {0}")]
+    UnknownError(String),
+}
+
+
+impl From<Error> for FetchTradesError {
+    fn from(e: Error) -> Self {
+        match e {
+            _ => FetchTradesError::UnknownError(format!("{:?}", e)),
+        }
+    }
+}
+
+impl From<ParseFloatError> for FetchTradesError {
+    fn from(e: ParseFloatError) -> Self {
+        FetchTradesError::ParseError(format!("{}", e))
+    }
+}
+
 pub type FetchTickersResult<T> = std::result::Result<T, FetchTickersError>;
 
 #[derive(Error, Debug)]

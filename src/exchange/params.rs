@@ -30,6 +30,17 @@ pub struct FetchBalanceParams {
 #[derive(Default, Builder, Debug)]
 #[builder(default)]
 #[non_exhaustive]
+pub struct FetchTradesParams {
+    pub market: Market,
+    pub since: Option<i64>,
+    pub limit: Option<i64>,
+    pub until: Option<i64>,
+}
+
+
+#[derive(Default, Builder, Debug)]
+#[builder(default)]
+#[non_exhaustive]
 pub struct FetchTickersParams {
     pub markets: Option<Vec<Market>>,
     pub chunk_size: Option<usize>,

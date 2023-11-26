@@ -226,7 +226,6 @@ impl Exchange for BinanceUsdm {
             return Err(Error::MarketNotInitialized.into());
         }
 
-
         let mut result: Vec<FetchTickersResponse>;
         if let Some(markets) = params.markets.as_ref() {
             result = vec![];
@@ -271,6 +270,53 @@ impl Exchange for BinanceUsdm {
             });
         }
         Ok(tickers)
+    }
+
+    async fn fetch_trades(&self, params: FetchTradesParams) -> FetchTradesResult<Vec<Trade>> {
+        if self.exchange_base.markets.is_empty() {
+            return Err(Error::MarketNotInitialized.into());
+        }
+
+        let symbol_id = self.exchange_base.unifier.get_symbol_id(&params.market).ok_or_else(|| Error::SymbolNotFound(format!("{}", params.market)))?;
+        let mut query = vec![("symbol", format!("{}", symbol_id))];
+        if let Some(since) = params.since {
+            query.push(("startTime", format!("{}", since)));
+        }
+        if let Some(until) = params.until {
+            query.push(("endTime", format!("{}", until)));
+        }
+        if let Some(limit) = params.limit {
+            if limit > 1000 {
+                return Err(Error::InvalidParameters("limit should be less than or equal to 1000".into()).into());
+            }
+            query.push(("limit", format!("{}", limit)));
+        }
+        let trades: Vec<FetchTradesResponse> = self.exchange_base.http_client.get("/fapi/v1/aggTrades", None, Some(&query)).await?;
+
+
+        let mut ret = vec![];
+        for trade in trades {
+            let order_side = match trade.is_buyer_market_maker {
+                true => OrderSide::Sell,
+                false => OrderSide::Buy,
+            };
+            let price = trade.price.parse::<f64>()?;
+            let amount = trade.quantity.parse::<f64>()?;
+            let trade = Trade::new(
+                trade.aggregate_trade_id.to_string(),
+                trade.timestamp,
+                params.market.clone(),
+                None,
+                None,
+                Some(order_side),
+                Some(trade.is_buyer_market_maker),
+                price, amount,
+                price * amount,
+                None, None,
+            );
+            ret.push(trade);
+        }
+        Ok(ret)
     }
 
     async fn watch_trades(&self, params: WatchTradesParams) -> WatchTradesResult<Receiver> {
@@ -1045,6 +1091,24 @@ struct FetchTickersResponse {
     pub count: i64,
 }
 
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FetchTradesResponse {
+    #[serde(rename = "a")]
+    pub aggregate_trade_id: i64,
+    #[serde(rename = "p")]
+    pub price: String,
+    #[serde(rename = "q")]
+    pub quantity: String,
+    #[serde(rename = "f")]
+    pub first_trade_id: i64,
+    #[serde(rename = "l")]
+    pub last_trade_id: i64,
+    #[serde(rename = "T")]
+    pub timestamp: i64,
+    #[serde(rename = "m")]
+    pub is_buyer_market_maker: bool,
+}
 
 #[cfg(test)]
 mod test {
